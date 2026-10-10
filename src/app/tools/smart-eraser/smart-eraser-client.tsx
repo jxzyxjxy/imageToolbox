@@ -5,10 +5,7 @@ import { Loader2, Wand2 } from 'lucide-react';
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BrushEditor, type BrushEditorHandle } from '@/components/brush-editor';
-import {
-  readFileAsDataURL,
-  downloadBlob,
-} from '@/lib/image-processing';
+import { readFileAsDataURL } from '@/lib/image-processing';
 
 export function SmartEraserClient() {
   const editorRef = useRef<BrushEditorHandle>(null);
@@ -45,7 +42,17 @@ export function SmartEraserClient() {
         setError(data.error || '处理失败，请重试');
         return;
       }
-      setResultUrl(data.imageUrl);
+      const proxyRes = await fetch('/api/fetch-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: data.imageUrl }),
+      });
+      const proxy: { dataUrl?: string; error?: string } = await proxyRes.json();
+      if (!proxyRes.ok || !proxy.dataUrl) {
+        setError(proxy.error || '结果加载失败，请重试');
+        return;
+      }
+      setResultUrl(proxy.dataUrl);
     } catch {
       setError('网络异常，请稍后重试');
     } finally {
@@ -55,9 +62,12 @@ export function SmartEraserClient() {
 
   const handleDownload = () => {
     if (!resultUrl) return;
-    fetch(resultUrl)
-      .then((r) => r.blob())
-      .then((blob) => downloadBlob(blob, `${fileName}_erased.png`));
+    const a = document.createElement('a');
+    a.href = resultUrl;
+    a.download = `${fileName}_erased.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   return (
