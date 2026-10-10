@@ -42,7 +42,7 @@ export default function Dropzone({
         handleFiles(e.dataTransfer.files);
       }}
       className={cn(
-        'group mx-auto mt-4 flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-indigo-200 bg-white px-6 py-14 text-center transition-colors',
+        'group mx-auto mt-4 flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed border-indigo-200 bg-white px-6 py-12 text-center transition-colors',
         'hover:border-indigo-400 hover:bg-indigo-50/30',
         dragging && 'border-indigo-500 bg-indigo-50/60',
         className,

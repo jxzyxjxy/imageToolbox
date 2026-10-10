@@ -19,9 +19,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="bg-[#f5f6fa] text-[#1e293b] antialiased">
-        {/* 手机界面容器：居中限宽；内边距由各页面自行控制（Hero 需满宽） */}
-        <div className="relative mx-auto flex min-h-screen w-full max-w-[430px] flex-col bg-[#f5f6fa]">
+      <body className="bg-[#e9edf4] text-[#1e293b] antialiased">
+        {/* 手机界面容器：小屏全宽、大屏最多 480px 居中；水平内边距由各页面自行控制 */}
+        <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col bg-[#f5f6fa] shadow-[0_0_40px_rgba(30,41,59,0.08)]">
           {children}
         </div>
       </body>

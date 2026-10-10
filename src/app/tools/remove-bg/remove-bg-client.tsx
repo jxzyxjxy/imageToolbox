@@ -145,13 +145,13 @@ export default function RemoveBgClient() {
         ) : (
           <div className="space-y-4">
             {/* 标题卡 */}
-            <section className="rounded-[28px] bg-gradient-to-br from-violet-500 to-indigo-600 p-5 text-white shadow-[0_10px_24px_rgba(99,102,241,0.3)]">
+            <section className="rounded-[24px] bg-gradient-to-br from-violet-500 to-indigo-600 p-5 text-white shadow-[0_10px_24px_rgba(99,102,241,0.3)]">
               <p className="text-[13px] text-white/85">一键去除背景，保留主体</p>
-              <p className="mt-1 text-[22px] font-bold leading-snug">AI 自动识别，也可手动微调容差</p>
+              <p className="mt-1 text-lg font-bold leading-snug">AI 自动识别，也可手动微调容差</p>
             </section>
 
             {/* 控制面板 */}
-            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+            <div className="rounded-[24px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={runAi}
@@ -202,7 +202,7 @@ export default function RemoveBgClient() {
 
             {/* 对比 */}
             <div className="space-y-3">
-              <div className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
                 <div className="px-4 py-3 text-sm font-semibold text-[#1e293b]">
                   原图
                   {picking && <span className="ml-1 text-[12px] font-normal text-indigo-500">· 取色模式</span>}
@@ -219,7 +219,7 @@ export default function RemoveBgClient() {
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
                 <div className="px-4 py-3 text-sm font-semibold text-[#1e293b]">
                   抠图结果 <span className="ml-1 text-[11px] font-normal text-[#94a3b8]">透明背景</span>
                 </div>

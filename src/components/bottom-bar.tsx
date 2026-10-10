@@ -22,7 +22,7 @@ export function BottomBar({
   loadingLabel = '处理中',
 }: BottomBarProps) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[430px] border-t border-slate-100 bg-white/90 px-5 pb-[max(env(safe-area-inset-bottom),16px)] pt-3 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[480px] border-t border-slate-100 bg-white/90 px-4 pb-[max(env(safe-area-inset-bottom),14px)] pt-3 backdrop-blur">
       <div className="flex gap-3">
         {onSecondary && (
           <button

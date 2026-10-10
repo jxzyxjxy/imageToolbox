@@ -89,13 +89,13 @@ export default function CompressClient() {
         ) : (
           <div className="space-y-4">
             {/* 标题卡 */}
-            <section className="rounded-[28px] bg-gradient-to-br from-emerald-500 to-green-600 p-5 text-white shadow-[0_10px_24px_rgba(16,185,129,0.3)]">
+            <section className="rounded-[24px] bg-gradient-to-br from-emerald-500 to-green-600 p-5 text-white shadow-[0_10px_24px_rgba(16,185,129,0.3)]">
               <p className="text-[13px] text-white/85">压缩质量越低，文件越小</p>
-              <p className="mt-1 text-[22px] font-bold leading-snug">拖动滑块，实时预览体积变化</p>
+              <p className="mt-1 text-lg font-bold leading-snug">拖动滑块，实时预览体积变化</p>
             </section>
 
             {/* 控制面板 */}
-            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+            <div className="rounded-[24px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
               <div className="mb-2 flex items-center justify-between text-sm">
                 <span className="font-semibold text-[#1e293b]">压缩质量</span>
                 <span className="font-semibold text-[#6366f1]">{Math.round(quality * 100)}%</span>
@@ -185,7 +185,7 @@ function PreviewCard({
   busy?: boolean;
 }) {
   return (
-    <div className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+    <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
       <div className="flex items-center justify-between px-4 py-3">
         <span className="text-sm font-semibold text-[#1e293b]">{label}</span>
         {badge ? (

@@ -145,13 +145,13 @@ export default function IdPhotoClient() {
         ) : (
           <div className="space-y-4">
             {/* 标题卡 */}
-            <section className="rounded-[28px] bg-gradient-to-br from-[#6366f1] via-[#8b5cf6] to-[#a855f7] p-5 text-white shadow-[0_10px_24px_rgba(139,92,246,0.32)]">
+            <section className="rounded-[24px] bg-gradient-to-br from-[#6366f1] via-[#8b5cf6] to-[#a855f7] p-5 text-white shadow-[0_10px_24px_rgba(139,92,246,0.32)]">
               <p className="text-[13px] text-white/85">标准证件照，多种背景与尺寸</p>
-              <p className="mt-1 text-[22px] font-bold leading-snug">选好背景色与规格，即时生成</p>
+              <p className="mt-1 text-lg font-bold leading-snug">选好背景色与规格，即时生成</p>
             </section>
 
             {/* 背景色 */}
-            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+            <div className="rounded-[24px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
               <span className="mb-3 block text-sm font-semibold text-[#1e293b]">证件照背景色</span>
               <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
                 {BG_COLORS.map((c) => (
@@ -176,7 +176,7 @@ export default function IdPhotoClient() {
             </div>
 
             {/* 尺寸规格 */}
-            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+            <div className="rounded-[24px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
               <span className="mb-3 block text-sm font-semibold text-[#1e293b]">尺寸规格</span>
               <div className="grid grid-cols-3 gap-2">
                 {SPECS.map((s) => (
@@ -200,7 +200,7 @@ export default function IdPhotoClient() {
             </div>
 
             {/* AI 识别 + 容差 */}
-            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+            <div className="rounded-[24px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
               <button
                 onClick={runAi}
                 disabled={analyzing}
@@ -235,7 +235,7 @@ export default function IdPhotoClient() {
             </div>
 
             {/* 预览 */}
-            <div className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+            <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm font-semibold text-[#1e293b]">生成预览</span>
                 <span className="text-[11px] text-[#94a3b8]">
