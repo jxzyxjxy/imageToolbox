@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils';
 interface DropzoneProps {
   onFile: (file: File) => void;
   accept?: string;
-  /** 自定义提示语 */
   hint?: string;
   className?: string;
 }
@@ -15,7 +14,7 @@ interface DropzoneProps {
 export default function Dropzone({
   onFile,
   accept = 'image/*',
-  hint = '点击或拖拽图片到此处，支持 JPG / PNG / WebP',
+  hint = '支持 JPG / PNG / WebP',
   className,
 }: DropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -30,8 +29,7 @@ export default function Dropzone({
   );
 
   return (
-    <button
-      type="button"
+    <div
       onClick={() => inputRef.current?.click()}
       onDragOver={(e) => {
         e.preventDefault();
@@ -44,24 +42,22 @@ export default function Dropzone({
         handleFiles(e.dataTransfer.files);
       }}
       className={cn(
-        'group flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-black/10 bg-white px-6 py-12 text-center transition-colors',
-        'hover:border-black/30',
-        dragging && 'border-blue-500 bg-blue-50/50',
+        'group mx-auto mt-4 flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-indigo-200 bg-white px-6 py-14 text-center transition-colors',
+        'hover:border-indigo-400 hover:bg-indigo-50/30',
+        dragging && 'border-indigo-500 bg-indigo-50/60',
         className,
       )}
     >
       <span
         className={cn(
-          'flex h-12 w-12 items-center justify-center rounded-full bg-black/[0.04] text-[#52525b] transition-transform group-hover:scale-105',
-          dragging && 'scale-110 text-blue-500',
+          'flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#a855f7] text-white shadow-[0_10px_20px_rgba(99,102,241,0.3)] transition-transform group-hover:scale-105',
+          dragging && 'scale-110',
         )}
       >
-        <UploadCloud className="h-6 w-6" />
+        <UploadCloud className="h-8 w-8" />
       </span>
-      <span className="text-sm font-medium text-[#3f3f46]">
-        {dragging ? '松开即可上传' : '选择一张图片'}
-      </span>
-      <span className="text-xs text-[#a1a1aa]">{hint}</span>
+      <span className="text-[16px] font-semibold text-[#1e293b]">选择一张图片</span>
+      <span className="text-[13px] text-[#94a3b8]">{hint}</span>
       <input
         ref={inputRef}
         type="file"
@@ -72,6 +68,6 @@ export default function Dropzone({
           e.target.value = '';
         }}
       />
-    </button>
+    </div>
   );
 }

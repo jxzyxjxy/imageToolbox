@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import ToolHeader from '@/components/tool-header';
 import Dropzone from '@/components/dropzone';
-import BottomBar from '@/components/bottom-bar';
+import { BottomBar } from '@/components/bottom-bar';
 import {
   readFileAsDataURL,
   loadImage,
@@ -62,121 +62,111 @@ export default function CompressClient() {
     };
   }, [original, quality, format]);
 
+  const reset = useCallback(() => {
+    setOriginal(null);
+    setResult(null);
+    setQuality(0.7);
+    setFormat('image/jpeg');
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    if (!result) return;
+    downloadBlob(result.blob, `compressed.${format.split('/')[1]}`);
+  }, [result, format]);
+
   const savedPct =
     original && result
       ? Math.max(0, Math.round((1 - result.size / original.size) * 100))
       : 0;
 
   return (
-    <div className="pb-28">
+    <div className="flex flex-1 flex-col pb-28">
       <ToolHeader {...tool} />
 
-      {!original ? (
-        <Dropzone
-          onFile={handleFile}
-          hint="支持 JPG / PNG / WebP"
-        />
-      ) : (
-        <div className="space-y-4">
-          {/* 控制面板 */}
-          <div className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-            <div className="mb-1 flex items-center justify-between text-sm">
-              <span className="font-medium text-[#3f3f46]">压缩质量</span>
-              <span className="text-[#71717a]">{Math.round(quality * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              min={10}
-              max={100}
-              value={Math.round(quality * 100)}
-              onChange={(e) => setQuality(Number(e.target.value) / 100)}
-              className="h-2 w-full cursor-pointer appearance-none rounded-full bg-black/10 accent-emerald-500"
-            />
-            <div className="mb-1.5 mt-4 block text-sm font-medium text-[#3f3f46]">
-              输出格式
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {(
-                [
-                  { v: 'image/jpeg', label: 'JPG' },
-                  { v: 'image/webp', label: 'WebP' },
-                  { v: 'image/png', label: 'PNG' },
-                ] as const
-              ).map((f) => (
-                <button
-                  key={f.v}
-                  onClick={() => setFormat(f.v)}
-                  className={cn(
-                    'rounded-xl border py-2.5 text-sm font-medium transition-colors',
-                    format === f.v
-                      ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-                      : 'border-black/10 text-[#71717a] active:bg-black/[0.03]',
-                  )}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
+      <main className="px-5 pt-4">
+        {!original ? (
+          <Dropzone onFile={handleFile} />
+        ) : (
+          <div className="space-y-4">
+            {/* 标题卡 */}
+            <section className="rounded-[28px] bg-gradient-to-br from-emerald-500 to-green-600 p-5 text-white shadow-[0_10px_24px_rgba(16,185,129,0.3)]">
+              <p className="text-[13px] text-white/85">压缩质量越低，文件越小</p>
+              <p className="mt-1 text-[22px] font-bold leading-snug">拖动滑块，实时预览体积变化</p>
+            </section>
 
-          {/* 对比 */}
-          <div className="space-y-3">
-            <PreviewCard
-              label="原图"
-              url={original.url}
-              meta={`${original.img.naturalWidth}×${original.img.naturalHeight} · ${formatBytes(original.size)}`}
-              highlight={false}
-            />
-            <PreviewCard
-              label="压缩后"
-              url={result?.dataUrl || original.url}
-              meta={
-                result
-                  ? `${result.width}×${result.height} · ${formatBytes(result.size)}`
-                  : '计算中…'
-              }
-              busy={busy}
-              badge={savedPct > 0 ? `节省 ${savedPct}%` : undefined}
-              highlight
-            />
-          </div>
-        </div>
-      )}
+            {/* 控制面板 */}
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <span className="font-semibold text-[#1e293b]">压缩质量</span>
+                <span className="font-semibold text-[#6366f1]">{Math.round(quality * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={Math.round(quality * 100)}
+                onChange={(e) => setQuality(Number(e.target.value) / 100)}
+                className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-indigo-500"
+              />
 
-      {/* 底部操作栏 */}
-      <BottomBar>
-        {original &&
-          (() => {
-            if (busy) {
-              return (
-                <div className="flex items-center justify-center gap-2 py-2 text-sm text-[#a1a1aa]">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/10 border-t-black/40" />
-                  正在处理…
-                </div>
-              );
-            }
-            if (!result) return null;
-            return (
-              <button
-                onClick={() =>
-                  downloadBlob(
-                    result.blob,
-                    `compressed.${format.split('/')[1]}`,
-                  )
+              <div className="mb-2 mt-5 block text-sm font-semibold text-[#1e293b]">
+                输出格式
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { v: 'image/jpeg', label: 'JPG' },
+                    { v: 'image/webp', label: 'WebP' },
+                    { v: 'image/png', label: 'PNG' },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.v}
+                    onClick={() => setFormat(f.v)}
+                    className={cn(
+                      'rounded-2xl border py-3 text-sm font-semibold transition-colors',
+                      format === f.v
+                        ? 'border-indigo-400 bg-indigo-50 text-indigo-600'
+                        : 'border-slate-200 text-[#64748b] active:bg-slate-50',
+                    )}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 对比 */}
+            <div className="space-y-3">
+              <PreviewCard
+                label="原图"
+                url={original.url}
+                meta={`${original.img.naturalWidth}×${original.img.naturalHeight} · ${formatBytes(original.size)}`}
+              />
+              <PreviewCard
+                label="压缩后"
+                url={result?.dataUrl || original.url}
+                meta={
+                  result
+                    ? `${result.width}×${result.height} · ${formatBytes(result.size)}`
+                    : '计算中…'
                 }
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-[15px] font-semibold text-white shadow-[0_8px_20px_rgba(16,185,129,0.3)] transition-transform active:scale-[0.98]"
-              >
-                <Download className="h-5 w-5" />
-                下载压缩图片
-                {original && (
-                  <span className="rounded-md bg-white/20 px-1.5 py-0.5 text-xs font-medium">
-                    ↓{savedPct}%
-                  </span>
-                )}
-              </button>
-            );
-          })()}
-      </BottomBar>
+                busy={busy}
+                badge={savedPct > 0 ? `节省 ${savedPct}%` : undefined}
+              />
+            </div>
+          </div>
+        )}
+      </main>
+
+      <BottomBar
+        primaryLabel="下载压缩图片"
+        loadingLabel="压缩中…"
+        loading={busy}
+        disabled={!result || busy}
+        onPrimary={handleDownload}
+        onSecondary={reset}
+      />
     </div>
   );
 }
@@ -187,42 +177,35 @@ function PreviewCard({
   meta,
   badge,
   busy,
-  highlight,
 }: {
   label: string;
   url: string;
   meta: string;
   badge?: string;
   busy?: boolean;
-  highlight?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-2xl border border-black/[0.04] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]',
-        highlight && badge && 'ring-2 ring-emerald-100',
-      )}
-    >
+    <div className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
       <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-sm font-medium text-[#3f3f46]">{label}</span>
+        <span className="text-sm font-semibold text-[#1e293b]">{label}</span>
         {badge ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600">
+          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-600">
             <Check className="h-3 w-3" />
             {badge}
           </span>
         ) : (
-          <span className="text-[11px] text-[#a1a1aa]">{meta}</span>
+          <span className="text-[11px] text-[#94a3b8]">{meta}</span>
         )}
       </div>
-      <div className="relative flex aspect-[4/3] w-full items-center justify-center bg-[#f4f5f8]">
+      <div className="relative flex aspect-[4/3] w-full items-center justify-center bg-slate-100">
         <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
         {busy && (
           <span className="absolute inset-0 flex items-center justify-center bg-white/50">
-            <span className="h-6 w-6 animate-spin rounded-full border-2 border-black/10 border-t-black/40" />
+            <span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-500" />
           </span>
         )}
       </div>
-      <div className="px-4 py-2.5 text-[11px] text-[#a1a1aa]">{meta}</div>
+      <div className="px-4 py-2.5 text-[11px] text-[#94a3b8]">{meta}</div>
     </div>
   );
 }

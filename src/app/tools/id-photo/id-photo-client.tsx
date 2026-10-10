@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Download, Camera, RotateCcw } from 'lucide-react';
+import { Sparkles, Camera } from 'lucide-react';
 import ToolHeader from '@/components/tool-header';
 import Dropzone from '@/components/dropzone';
-import BottomBar from '@/components/bottom-bar';
+import { BottomBar } from '@/components/bottom-bar';
 import {
   readFileAsDataURL,
   loadImage,
@@ -45,10 +45,9 @@ const BG_COLORS: { name: string; value: string }[] = [
   { name: '灰', value: '#c8ccd4' },
 ];
 
-async function analyzeBackground(imageBase64: string): Promise<{
-  bg: [number, number, number];
-  uniform: boolean;
-}> {
+async function analyzeBackground(
+  imageBase64: string,
+): Promise<{ bg: [number, number, number]; uniform: boolean; note?: string }> {
   const res = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -89,7 +88,7 @@ export default function IdPhotoClient() {
       const base64 = thumb.toDataURL('image/jpeg', 0.8);
       const res = await analyzeBackground(base64);
       setRefColor(res.bg);
-      setNote('已识别照片背景');
+      setNote(res.note || '已识别照片背景');
     } catch {
       setNote('AI 识别失败，已使用默认参考色');
     } finally {
@@ -105,8 +104,7 @@ export default function IdPhotoClient() {
       try {
         const { canvas: subject } = removeBackground(sourceCanvas, refColor, tolerance);
         const out = makeIdPhoto(subject, bgColor, spec.w, spec.h);
-        const url = out.toDataURL('image/jpeg', 0.92);
-        setResultUrl(url);
+        setResultUrl(out.toDataURL('image/jpeg', 0.92));
         const blob = await canvasToBlob(out, 'image/jpeg', 0.92);
         setResultSize(blob.size);
       } catch (e) {
@@ -120,6 +118,15 @@ export default function IdPhotoClient() {
     };
   }, [sourceCanvas, refColor, tolerance, bgColor, spec]);
 
+  const reset = useCallback(() => {
+    setSourceCanvas(null);
+    setResultUrl(null);
+    setNote('');
+    setTolerance(16);
+    setBgColor('#2d6bb3');
+    setSpec(SPECS[0]);
+  }, []);
+
   const handleDownload = useCallback(async () => {
     if (!sourceCanvas) return;
     const { canvas: subject } = removeBackground(sourceCanvas, refColor, tolerance);
@@ -129,156 +136,148 @@ export default function IdPhotoClient() {
   }, [sourceCanvas, refColor, tolerance, bgColor, spec]);
 
   return (
-    <div className="pb-28">
+    <div className="flex flex-1 flex-col pb-28">
       <ToolHeader {...tool} />
 
-      {!sourceCanvas ? (
-        <Dropzone onFile={handleFile} hint="建议使用正面、光线均匀、背景干净的人像照" />
-      ) : (
-        <div className="space-y-4">
-          {/* 背景色 */}
-          <div className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-            <span className="mb-3 block text-sm font-medium text-[#3f3f46]">证件照背景色</span>
-            <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              {BG_COLORS.map((c) => (
-                <button
-                  key={c.value}
-                  onClick={() => setBgColor(c.value)}
-                  className={cn(
-                    'flex shrink-0 flex-col items-center gap-1.5 rounded-2xl border p-2 transition-colors active:scale-95',
-                    bgColor === c.value
-                      ? 'border-sky-400 bg-sky-50'
-                      : 'border-black/10 active:bg-black/[0.03]',
-                  )}
-                >
-                  <span
-                    className="h-9 w-9 rounded-xl border border-black/10"
-                    style={{ backgroundColor: c.value }}
-                  />
-                  <span className="text-[11px] text-[#71717a]">{c.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+      <main className="px-5 pt-4">
+        {!sourceCanvas ? (
+          <Dropzone onFile={handleFile} hint="建议使用正面、光线均匀、背景干净的人像照" />
+        ) : (
+          <div className="space-y-4">
+            {/* 标题卡 */}
+            <section className="rounded-[28px] bg-gradient-to-br from-[#6366f1] via-[#8b5cf6] to-[#a855f7] p-5 text-white shadow-[0_10px_24px_rgba(139,92,246,0.32)]">
+              <p className="text-[13px] text-white/85">标准证件照，多种背景与尺寸</p>
+              <p className="mt-1 text-[22px] font-bold leading-snug">选好背景色与规格，即时生成</p>
+            </section>
 
-          {/* 尺寸规格 */}
-          <div className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-            <span className="mb-3 block text-sm font-medium text-[#3f3f46]">尺寸规格</span>
-            <div className="grid grid-cols-3 gap-2">
-              {SPECS.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setSpec(s)}
-                  className={cn(
-                    'flex flex-col items-center rounded-2xl border px-1 py-3 transition-colors active:scale-95',
-                    spec.id === s.id
-                      ? 'border-sky-400 bg-sky-50'
-                      : 'border-black/10 active:bg-black/[0.03]',
-                  )}
-                >
-                  <span className="text-sm font-semibold text-[#3f3f46]">{s.name}</span>
-                  <span className="mt-0.5 text-[10px] text-[#a1a1aa]">
-                    {s.mm} · {s.w}×{s.h}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 抠图设置 + AI */}
-          <div className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-[#3f3f46]">抠图设置</span>
-              <button
-                onClick={() => {
-                  setRefColor(sampleCornerColor(sourceCanvas!));
-                  setTolerance(16);
-                  setNote('');
-                }}
-                className="inline-flex items-center gap-1 text-xs text-[#71717a] active:text-[#18181b]"
-              >
-                <RotateCcw className="h-3 w-3" />
-                重置
-              </button>
-            </div>
-            <button
-              onClick={runAi}
-              disabled={analyzing}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(14,165,233,0.28)] transition-transform active:scale-[0.98] disabled:opacity-60"
-            >
-              {analyzing ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              AI 智能识别背景
-            </button>
-            <div className="mt-4">
-              <div className="mb-1.5 flex items-center justify-between text-sm">
-                <span className="font-medium text-[#3f3f46]">容差（灵敏度）</span>
-                <span className="text-[#71717a]">{tolerance}</span>
+            {/* 背景色 */}
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              <span className="mb-3 block text-sm font-semibold text-[#1e293b]">证件照背景色</span>
+              <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                {BG_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    onClick={() => setBgColor(c.value)}
+                    className={cn(
+                      'flex shrink-0 flex-col items-center gap-1.5 rounded-2xl border p-2 transition-colors active:scale-95',
+                      bgColor === c.value
+                        ? 'border-indigo-400 bg-indigo-50'
+                        : 'border-slate-200 active:bg-slate-50',
+                    )}
+                  >
+                    <span
+                      className="h-9 w-9 rounded-xl border border-black/10"
+                      style={{ backgroundColor: c.value }}
+                    />
+                    <span className="text-[11px] text-[#64748b]">{c.name}</span>
+                  </button>
+                ))}
               </div>
-              <input
-                type="range"
-                min={1}
-                max={100}
-                value={tolerance}
-                onChange={(e) => setTolerance(Number(e.target.value))}
-                className="h-2 w-full cursor-pointer appearance-none rounded-full bg-black/10 accent-sky-500"
-              />
             </div>
-            {note && (
-              <div className="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-700">{note}</div>
-            )}
-          </div>
 
-          {/* 预览 */}
-          <div className="overflow-hidden rounded-2xl border border-black/[0.04] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm font-medium text-[#3f3f46]">生成预览</span>
-              <span className="text-[11px] text-[#a1a1aa]">
-                {spec.name} · {spec.w}×{spec.h}px
-              </span>
+            {/* 尺寸规格 */}
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              <span className="mb-3 block text-sm font-semibold text-[#1e293b]">尺寸规格</span>
+              <div className="grid grid-cols-3 gap-2">
+                {SPECS.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSpec(s)}
+                    className={cn(
+                      'flex flex-col items-center rounded-2xl border px-1 py-3 transition-colors active:scale-95',
+                      spec.id === s.id
+                        ? 'border-indigo-400 bg-indigo-50'
+                        : 'border-slate-200 active:bg-slate-50',
+                    )}
+                  >
+                    <span className="text-sm font-semibold text-[#1e293b]">{s.name}</span>
+                    <span className="mt-0.5 text-[10px] text-[#94a3b8]">
+                      {s.mm} · {s.w}×{s.h}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="relative flex aspect-[3/4] items-center justify-center bg-[#f4f5f8] p-4">
-              {busy && (
-                <span className="absolute inset-0 z-10 flex items-center justify-center bg-white/50">
-                  <span className="h-6 w-6 animate-spin rounded-full border-2 border-black/10 border-t-black/40" />
-                </span>
-              )}
-              {resultUrl ? (
-                <img
-                  src={resultUrl}
-                  alt="证件照预览"
-                  className="max-h-[440px] max-w-full rounded-md shadow-sm"
+
+            {/* AI 识别 + 容差 */}
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              <button
+                onClick={runAi}
+                disabled={analyzing}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#a855f7] text-sm font-semibold text-white shadow-[0_8px_18px_rgba(99,102,241,0.32)] transition-transform active:scale-[0.98] disabled:opacity-60"
+              >
+                {analyzing ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                AI 智能识别背景
+              </button>
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="font-semibold text-[#1e293b]">容差（灵敏度）</span>
+                  <span className="font-semibold text-[#6366f1]">{tolerance}</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={100}
+                  value={tolerance}
+                  onChange={(e) => setTolerance(Number(e.target.value))}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-indigo-500"
                 />
-              ) : (
-                <span className="flex flex-col items-center gap-2 text-sm text-[#a1a1aa]">
-                  <Camera className="h-7 w-7" />
-                  正在生成…
-                </span>
+              </div>
+              {note && (
+                <div className="mt-3 rounded-xl bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-600">
+                  {note}
+                </div>
               )}
             </div>
-            <div className="flex items-center justify-between px-4 py-2.5 text-[11px] text-[#a1a1aa]">
-              <span>图片在本地处理，不上传</span>
-              {resultSize > 0 && <span>导出 JPG · {formatBytes(resultSize)}</span>}
+
+            {/* 预览 */}
+            <div className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-semibold text-[#1e293b]">生成预览</span>
+                <span className="text-[11px] text-[#94a3b8]">
+                  {spec.name} · {spec.w}×{spec.h}px
+                </span>
+              </div>
+              <div className="relative flex aspect-[3/4] items-center justify-center bg-slate-100 p-4">
+                {busy && (
+                  <span className="absolute inset-0 z-10 flex items-center justify-center bg-white/50">
+                    <span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-500" />
+                  </span>
+                )}
+                {resultUrl ? (
+                  <img
+                    src={resultUrl}
+                    alt="证件照预览"
+                    className="max-h-[440px] max-w-full rounded-md shadow-sm"
+                  />
+                ) : (
+                  <span className="flex flex-col items-center gap-2 text-sm text-[#94a3b8]">
+                    <Camera className="h-7 w-7" />
+                    正在生成…
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between px-4 py-2.5 text-[11px] text-[#94a3b8]">
+                <span>图片在本地处理，不上传</span>
+                {resultSize > 0 && <span>导出 JPG · {formatBytes(resultSize)}</span>}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* 底部操作栏 */}
-      <BottomBar>
-        {sourceCanvas && resultUrl && (
-          <button
-            onClick={handleDownload}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 text-[15px] font-semibold text-white shadow-[0_8px_20px_rgba(14,165,233,0.3)] transition-transform active:scale-[0.98]"
-          >
-            <Download className="h-5 w-5" />
-            下载 {spec.name}证件照
-          </button>
         )}
-      </BottomBar>
+      </main>
+
+      <BottomBar
+        primaryLabel={`下载${spec.name}证件照`}
+        loadingLabel="生成中…"
+        loading={busy}
+        disabled={!sourceCanvas || busy}
+        onPrimary={handleDownload}
+        onSecondary={reset}
+      />
     </div>
   );
 }
@@ -288,10 +287,10 @@ function sampleCornerColor(canvas: HTMLCanvasElement): [number, number, number] 
   const w = canvas.width;
   const h = canvas.height;
   const size = Math.max(1, Math.round(Math.min(w, h) * 0.06));
-  let r = 0,
-    g = 0,
-    b = 0,
-    n = 0;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
   const corners: Array<[number, number]> = [
     [0, 0],
     [w - size, 0],
