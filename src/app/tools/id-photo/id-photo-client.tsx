@@ -1,15 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ImageIcon,
-  Sparkles,
-  Download,
-  Camera,
-  RotateCcw,
-} from 'lucide-react';
+import { Sparkles, Download, Camera, RotateCcw } from 'lucide-react';
 import ToolHeader from '@/components/tool-header';
 import Dropzone from '@/components/dropzone';
+import BottomBar from '@/components/bottom-bar';
 import {
   readFileAsDataURL,
   loadImage,
@@ -65,7 +60,6 @@ async function analyzeBackground(imageBase64: string): Promise<{
 
 export default function IdPhotoClient() {
   const [sourceCanvas, setSourceCanvas] = useState<HTMLCanvasElement | null>(null);
-  const [sourceUrl, setSourceUrl] = useState('');
   const [refColor, setRefColor] = useState<[number, number, number]>([245, 245, 245]);
   const [tolerance, setTolerance] = useState(16);
   const [bgColor, setBgColor] = useState('#2d6bb3');
@@ -82,7 +76,6 @@ export default function IdPhotoClient() {
     const img = await loadImage(url);
     const canvas = drawToCanvas(img, 2048);
     setSourceCanvas(canvas);
-    setSourceUrl(canvas.toDataURL('image/jpeg', 0.9));
     setResultUrl(null);
     setNote('');
     setRefColor(sampleCornerColor(canvas));
@@ -96,7 +89,7 @@ export default function IdPhotoClient() {
       const base64 = thumb.toDataURL('image/jpeg', 0.8);
       const res = await analyzeBackground(base64);
       setRefColor(res.bg);
-      setNote('已识别照片背景色');
+      setNote('已识别照片背景');
     } catch {
       setNote('AI 识别失败，已使用默认参考色');
     } finally {
@@ -104,7 +97,6 @@ export default function IdPhotoClient() {
     }
   }, [sourceCanvas]);
 
-  // 生成证件照
   useEffect(() => {
     if (!sourceCanvas) return;
     setBusy(true);
@@ -137,169 +129,160 @@ export default function IdPhotoClient() {
   }, [sourceCanvas, refColor, tolerance, bgColor, spec]);
 
   return (
-    <div>
+    <div className="pb-28">
       <ToolHeader {...tool} />
 
       {!sourceCanvas ? (
-        <Dropzone
-          onFile={handleFile}
-          hint="建议上传正面、光线均匀、背景干净的人像照"
-        />
+        <Dropzone onFile={handleFile} hint="建议使用正面、光线均匀、背景干净的人像照" />
       ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.2fr]">
-            {/* 左侧：控制 */}
-            <div className="space-y-5">
-              {/* 背景色 */}
-              <div className="rounded-2xl border border-black/5 bg-white p-5">
-                <span className="mb-3 block text-sm font-medium text-[#3f3f46]">
-                  证件照背景色
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {BG_COLORS.map((c) => (
-                    <button
-                      key={c.value}
-                      onClick={() => setBgColor(c.value)}
-                      className={cn(
-                        'flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-colors',
-                        bgColor === c.value
-                          ? 'border-sky-500 ring-2 ring-sky-100'
-                          : 'border-black/10 hover:border-black/30',
-                      )}
-                    >
-                      <span
-                        className="h-8 w-8 rounded-lg border border-black/10"
-                        style={{ backgroundColor: c.value }}
-                      />
-                      <span className="text-xs text-[#71717a]">{c.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 尺寸规格 */}
-              <div className="rounded-2xl border border-black/5 bg-white p-5">
-                <span className="mb-3 block text-sm font-medium text-[#3f3f46]">
-                  尺寸规格
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {SPECS.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => setSpec(s)}
-                      className={cn(
-                        'flex flex-col items-center rounded-xl border px-2 py-3 transition-colors',
-                        spec.id === s.id
-                          ? 'border-sky-500 bg-sky-50'
-                          : 'border-black/10 hover:border-black/30',
-                      )}
-                    >
-                      <span className="text-sm font-medium text-[#3f3f46]">{s.name}</span>
-                      <span className="mt-0.5 text-[11px] text-[#a1a1aa]">
-                        {s.mm} · {s.w}×{s.h}px
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 高级：参考色 + 容差 + AI */}
-              <div className="rounded-2xl border border-black/5 bg-white p-5">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm font-medium text-[#3f3f46]">抠图设置</span>
-                  <button
-                    onClick={() => {
-                      setRefColor(sampleCornerColor(sourceCanvas!));
-                      setTolerance(16);
-                      setNote('');
-                    }}
-                    className="inline-flex items-center gap-1 text-xs text-[#71717a] hover:text-[#18181b]"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    重置
-                  </button>
-                </div>
+        <div className="space-y-4">
+          {/* 背景色 */}
+          <div className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <span className="mb-3 block text-sm font-medium text-[#3f3f46]">证件照背景色</span>
+            <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {BG_COLORS.map((c) => (
                 <button
-                  onClick={runAi}
-                  disabled={analyzing}
-                  className="mb-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  key={c.value}
+                  onClick={() => setBgColor(c.value)}
+                  className={cn(
+                    'flex shrink-0 flex-col items-center gap-1.5 rounded-2xl border p-2 transition-colors active:scale-95',
+                    bgColor === c.value
+                      ? 'border-sky-400 bg-sky-50'
+                      : 'border-black/10 active:bg-black/[0.03]',
+                  )}
                 >
-                  {analyzing ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
-                  AI 智能识别背景
+                  <span
+                    className="h-9 w-9 rounded-xl border border-black/10"
+                    style={{ backgroundColor: c.value }}
+                  />
+                  <span className="text-[11px] text-[#71717a]">{c.name}</span>
                 </button>
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="font-medium text-[#3f3f46]">容差（灵敏度）</span>
-                  <span className="text-[#71717a]">{tolerance}</span>
-                </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={100}
-                  value={tolerance}
-                  onChange={(e) => setTolerance(Number(e.target.value))}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-black/10 accent-sky-500"
-                />
-                {note && (
-                  <div className="mt-4 rounded-lg bg-sky-50 px-4 py-2.5 text-sm text-sky-700">
-                    {note}
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
+          </div>
 
-            {/* 右侧：预览 */}
-            <div className="space-y-4">
-              <div className="overflow-hidden rounded-2xl border border-black/5 bg-white">
-                <div className="border-b border-black/5 px-4 py-3 text-sm font-medium text-[#3f3f46]">
-                  生成预览 · {spec.name}（{spec.w}×{spec.h}px）
-                </div>
-                <div className="relative flex aspect-[3/4] items-center justify-center bg-[#fafafa] p-4">
-                  {busy && (
-                    <span className="absolute inset-0 z-10 flex items-center justify-center bg-white/40">
-                      <span className="h-6 w-6 animate-spin rounded-full border-2 border-black/10 border-t-black/40" />
-                    </span>
+          {/* 尺寸规格 */}
+          <div className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <span className="mb-3 block text-sm font-medium text-[#3f3f46]">尺寸规格</span>
+            <div className="grid grid-cols-3 gap-2">
+              {SPECS.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSpec(s)}
+                  className={cn(
+                    'flex flex-col items-center rounded-2xl border px-1 py-3 transition-colors active:scale-95',
+                    spec.id === s.id
+                      ? 'border-sky-400 bg-sky-50'
+                      : 'border-black/10 active:bg-black/[0.03]',
                   )}
-                  {resultUrl && (
-                    <img
-                      src={resultUrl}
-                      alt="证件照预览"
-                      className="max-h-[460px] max-w-full rounded-md shadow-sm"
-                    />
-                  )}
-                  {!resultUrl && (
-                    <span className="flex flex-col items-center gap-2 text-sm text-[#a1a1aa]">
-                      <Camera className="h-8 w-8" />
-                      正在生成…
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between px-4 py-3 text-xs text-[#a1a1aa]">
-                  <span>原图已上传，处理均在本地完成</span>
-                  {resultSize > 0 && <span>导出 JPG · {formatBytes(resultSize)}</span>}
-                </div>
-              </div>
+                >
+                  <span className="text-sm font-semibold text-[#3f3f46]">{s.name}</span>
+                  <span className="mt-0.5 text-[10px] text-[#a1a1aa]">
+                    {s.mm} · {s.w}×{s.h}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
 
+          {/* 抠图设置 + AI */}
+          <div className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-[#3f3f46]">抠图设置</span>
               <button
-                onClick={handleDownload}
-                disabled={!resultUrl}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#18181b] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => {
+                  setRefColor(sampleCornerColor(sourceCanvas!));
+                  setTolerance(16);
+                  setNote('');
+                }}
+                className="inline-flex items-center gap-1 text-xs text-[#71717a] active:text-[#18181b]"
               >
-                <Download className="h-4 w-4" />
-                下载证件照
+                <RotateCcw className="h-3 w-3" />
+                重置
               </button>
+            </div>
+            <button
+              onClick={runAi}
+              disabled={analyzing}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(14,165,233,0.28)] transition-transform active:scale-[0.98] disabled:opacity-60"
+            >
+              {analyzing ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              AI 智能识别背景
+            </button>
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-sm">
+                <span className="font-medium text-[#3f3f46]">容差（灵敏度）</span>
+                <span className="text-[#71717a]">{tolerance}</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={100}
+                value={tolerance}
+                onChange={(e) => setTolerance(Number(e.target.value))}
+                className="h-2 w-full cursor-pointer appearance-none rounded-full bg-black/10 accent-sky-500"
+              />
+            </div>
+            {note && (
+              <div className="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-700">{note}</div>
+            )}
+          </div>
+
+          {/* 预览 */}
+          <div className="overflow-hidden rounded-2xl border border-black/[0.04] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-sm font-medium text-[#3f3f46]">生成预览</span>
+              <span className="text-[11px] text-[#a1a1aa]">
+                {spec.name} · {spec.w}×{spec.h}px
+              </span>
+            </div>
+            <div className="relative flex aspect-[3/4] items-center justify-center bg-[#f4f5f8] p-4">
+              {busy && (
+                <span className="absolute inset-0 z-10 flex items-center justify-center bg-white/50">
+                  <span className="h-6 w-6 animate-spin rounded-full border-2 border-black/10 border-t-black/40" />
+                </span>
+              )}
+              {resultUrl ? (
+                <img
+                  src={resultUrl}
+                  alt="证件照预览"
+                  className="max-h-[440px] max-w-full rounded-md shadow-sm"
+                />
+              ) : (
+                <span className="flex flex-col items-center gap-2 text-sm text-[#a1a1aa]">
+                  <Camera className="h-7 w-7" />
+                  正在生成…
+                </span>
+              )}
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5 text-[11px] text-[#a1a1aa]">
+              <span>图片在本地处理，不上传</span>
+              {resultSize > 0 && <span>导出 JPG · {formatBytes(resultSize)}</span>}
             </div>
           </div>
         </div>
       )}
+
+      {/* 底部操作栏 */}
+      <BottomBar>
+        {sourceCanvas && resultUrl && (
+          <button
+            onClick={handleDownload}
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 text-[15px] font-semibold text-white shadow-[0_8px_20px_rgba(14,165,233,0.3)] transition-transform active:scale-[0.98]"
+          >
+            <Download className="h-5 w-5" />
+            下载 {spec.name}证件照
+          </button>
+        )}
+      </BottomBar>
     </div>
   );
 }
 
-/** 采样四角区域的平均色作为参考背景色 */
 function sampleCornerColor(canvas: HTMLCanvasElement): [number, number, number] {
   const ctx = canvas.getContext('2d')!;
   const w = canvas.width;
