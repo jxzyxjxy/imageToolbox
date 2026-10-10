@@ -8,7 +8,7 @@ import {
 
 export const runtime = 'nodejs';
 
-type EditMode = 'watermark' | 'object';
+type EditMode = 'watermark' | 'object' | 'restore';
 
 function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
   const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUrl);
@@ -29,6 +29,8 @@ const PROMPTS: Record<EditMode, string> = {
     'Remove all watermarks, overlaid text, logos and stamps from this image, especially in the areas highlighted by the user brush mask. Naturally reconstruct and fill those regions using the surrounding texture, colors and lighting. Keep every other part of the image exactly unchanged. Photorealistic, seamless, high-quality image retouching, no blur, no traces of editing.',
   object:
     'Remove the unwanted objects or people highlighted by the user brush mask from this photo. Seamlessly fill the erased regions with the matching surrounding background, texture and lighting so they look as if they never existed. Keep every other part of the image exactly unchanged. Photorealistic, seamless, high-quality inpainting, no blur, no traces of editing.',
+  restore:
+    'Restore this old, worn, blurred, noisy or damaged photograph into a sharp, clear, high-resolution image. Remove scratches, dust, spots, stains, grain, noise and faded areas; repair cracks, tears and creases; recover facial features and fine details with natural skin and material texture; correct contrast, brightness, white balance and slightly faded colors. Keep the original subject, pose, composition and identity unchanged. Photorealistic, natural, no over-processing, no plastic look, no artifacts.',
 };
 
 export async function POST(request: NextRequest) {

@@ -312,6 +312,15 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1)} ${sizes[i]}`;
 }
 
+/** 下载 dataURL 图片（转 Blob 后触发浏览器下载） */
+export async function downloadDataUrl(
+  dataUrl: string,
+  filename: string,
+): Promise<void> {
+  const blob = await (await fetch(dataUrl)).blob();
+  downloadBlob(blob, filename);
+}
+
 /**
  * 高清放大：分步 2x 上采样（配合高质量插值），再做 Unsharp Mask 锐化增强细节。
  * @param factor 总放大倍数（2 / 3 / 4）

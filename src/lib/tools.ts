@@ -8,6 +8,7 @@ import {
   Eraser,
   Wand2,
   ScanSearch,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -80,6 +81,15 @@ export const tools: ToolDef[] = [
     icon: ScanSearch,
     gradient: 'from-cyan-500 to-teal-600',
     accentBg: 'bg-cyan-50',
+    status: 'ready',
+  },
+  {
+    slug: 'restore',
+    name: '老照片修复',
+    description: '修复模糊、划痕、褪色的老照片，AI 提清晰降噪，重焕高清细节。',
+    icon: Sparkles,
+    gradient: 'from-indigo-500 to-purple-600',
+    accentBg: 'bg-indigo-50',
     status: 'ready',
   },
 ];
