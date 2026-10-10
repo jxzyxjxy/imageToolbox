@@ -11,7 +11,7 @@ interface DropzoneProps {
   className?: string;
 }
 
-export default function Dropzone({
+export function Dropzone({
   onFile,
   accept = 'image/*',
   hint = '支持 JPG / PNG / WebP',

@@ -4,14 +4,17 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 
 interface ToolHeaderProps {
-  name: string;
+  /** 标题（优先），兼容旧用法 name */
+  title?: string;
+  name?: string;
   description: string;
 }
 
-export default function ToolHeader({ name, description }: ToolHeaderProps) {
+export function ToolHeader({ title, name, description }: ToolHeaderProps) {
+  const heading = title ?? name ?? '';
   const router = useRouter();
   return (
-    <header className="flex items-center gap-3 px-5 pt-6">
+    <header className="flex items-center gap-3 px-4 pt-5">
       <button
         type="button"
         onClick={() => router.back()}
@@ -22,7 +25,7 @@ export default function ToolHeader({ name, description }: ToolHeaderProps) {
       </button>
       <div className="min-w-0 text-left">
         <h1 className="truncate text-[19px] font-bold leading-tight text-[#1e293b]">
-          {name}
+          {heading}
         </h1>
         <p className="truncate text-[13px] text-[#64748b]">{description}</p>
       </div>

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkles, Camera } from 'lucide-react';
-import ToolHeader from '@/components/tool-header';
-import Dropzone from '@/components/dropzone';
+import { ToolHeader } from '@/components/tool-header';
+import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
 import {
   readFileAsDataURL,

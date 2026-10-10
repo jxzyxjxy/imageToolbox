@@ -5,6 +5,9 @@ import {
   ImageIcon,
   Scissors,
   FileArchive,
+  Eraser,
+  Wand2,
+  ScanSearch,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -50,6 +53,33 @@ export const tools: ToolDef[] = [
     icon: FileArchive,
     gradient: 'from-emerald-500 to-green-600',
     accentBg: 'bg-emerald-50',
+    status: 'ready',
+  },
+  {
+    slug: 'remove-watermark',
+    name: '图片去水印',
+    description: '涂抹水印区域，AI 智能填补还原，去除文字、Logo 与印记。',
+    icon: Eraser,
+    gradient: 'from-amber-500 to-orange-600',
+    accentBg: 'bg-amber-50',
+    status: 'ready',
+  },
+  {
+    slug: 'smart-eraser',
+    name: '智能消除',
+    description: '圈选多余的路人或杂物，一键无痕移除，让画面更干净。',
+    icon: Wand2,
+    gradient: 'from-pink-500 to-rose-600',
+    accentBg: 'bg-pink-50',
+    status: 'ready',
+  },
+  {
+    slug: 'upscale',
+    name: '高清放大',
+    description: '无损放大图片 2 至 4 倍并锐化细节，让模糊照片变高清。',
+    icon: ScanSearch,
+    gradient: 'from-cyan-500 to-teal-600',
+    accentBg: 'bg-cyan-50',
     status: 'ready',
   },
 ];

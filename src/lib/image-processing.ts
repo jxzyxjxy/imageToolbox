@@ -311,3 +311,90 @@ export function formatBytes(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1)} ${sizes[i]}`;
 }
+
+/**
+ * 高清放大：分步 2x 上采样（配合高质量插值），再做 Unsharp Mask 锐化增强细节。
+ * @param factor 总放大倍数（2 / 3 / 4）
+ */
+export async function upscaleImage(
+  source: HTMLImageElement | HTMLCanvasElement,
+  factor: number,
+): Promise<HTMLCanvasElement> {
+  const isImg = source instanceof HTMLImageElement;
+  const srcW = isImg ? source.naturalWidth : source.width;
+  const srcH = isImg ? source.naturalHeight : source.height;
+
+  const targetW = Math.round(srcW * factor);
+  const targetH = Math.round(srcH * factor);
+  // 保护内存，单边长超过 8000 时等比收敛
+  const maxSide = 8000;
+  const scale = Math.min(1, maxSide / Math.max(targetW, targetH));
+  const finalW = Math.max(1, Math.round(targetW * scale));
+  const finalH = Math.max(1, Math.round(targetH * scale));
+
+  // 分步 2x 放大，每一步都使用高质量平滑插值，最后缩放到目标尺寸
+  let current: HTMLCanvasElement = document.createElement('canvas');
+  current.width = srcW;
+  current.height = srcH;
+  current.getContext('2d')!.drawImage(source as CanvasImageSource, 0, 0);
+
+  let curW = srcW;
+  let curH = srcH;
+  while (curW < finalW || curH < finalH) {
+    const nextW = Math.min(finalW, curW * 2);
+    const nextH = Math.min(finalH, curH * 2);
+    const next = document.createElement('canvas');
+    next.width = nextW;
+    next.height = nextH;
+    const nctx = next.getContext('2d')!;
+    nctx.imageSmoothingEnabled = true;
+    nctx.imageSmoothingQuality = 'high';
+    nctx.drawImage(current, 0, 0, nextW, nextH);
+    current = next;
+    curW = nextW;
+    curH = nextH;
+  }
+
+  return unsharpMask(current, factor);
+}
+
+/** Unsharp Mask：用原生高斯模糊做反遮罩锐化，strength 越大边缘越强 */
+function unsharpMask(canvas: HTMLCanvasElement, factor: number): HTMLCanvasElement {
+  const ctx = canvas.getContext('2d')!;
+  const { width, height } = canvas;
+  const src = ctx.getImageData(0, 0, width, height);
+
+  // 用浏览器原生滤镜生成低频高斯模糊层（远快于手动逐像素卷积）
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = width;
+  blurCanvas.height = height;
+  const bctx = blurCanvas.getContext('2d')!;
+  bctx.filter = 'blur(1px)';
+  bctx.drawImage(canvas, 0, 0);
+  const blurred = bctx.getImageData(0, 0, width, height);
+
+  const out = ctx.createImageData(width, height);
+  const s = src.data;
+  const bl = blurred.data;
+  const o = out.data;
+
+  // 放大倍数越大，锐化强度适当增强，补偿插值带来的模糊
+  const amount = Math.min(1.4, 0.6 + factor * 0.2);
+  const threshold = 2;
+  for (let p = 0; p < s.length; p += 4) {
+    for (let c = 0; c < 3; c++) {
+      const original = s[p + c];
+      const diff = original - bl[p + c];
+      const value =
+        Math.abs(diff) >= threshold ? original + diff * amount : original;
+      o[p + c] = Math.max(0, Math.min(255, value));
+    }
+    o[p + 3] = s[p + 3];
+  }
+
+  const result = document.createElement('canvas');
+  result.width = width;
+  result.height = height;
+  result.getContext('2d')!.putImageData(out, 0, 0);
+  return result;
+}
