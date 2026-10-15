@@ -112,8 +112,9 @@ export default function IconSplitterClient() {
   const downloadAll = async () => {
     if (!icons.length || !sprite) return;
     const zip = new JSZip();
-    for (const icon of icons) {
-      zip.file(sanitize(icon.name) + '.png', await (await fetch(icon.dataUrl)).blob());
+    for (let i = 0; i < icons.length; i++) {
+      const icon = icons[i];
+      zip.file(`${sanitize(icon.name)}-${i + 1}.png`, await (await fetch(icon.dataUrl)).blob());
     }
     zip.file('sprite.png', await (await fetch(sprite!)).blob());
     const blob = await zip.generateAsync({ type: 'blob' });
@@ -271,9 +272,11 @@ export default function IconSplitterClient() {
               </p>
               <div className="grid grid-cols-3 gap-3">
                 {icons.map((item, i) => (
-                  <div key={i} className="overflow-hidden rounded-2xl border border-slate-100">
+                  <div key={i} className="relative overflow-hidden rounded-2xl border border-slate-100">
                     <button
-                      onClick={() => downloadDataUrl(item.dataUrl, sanitize(item.name) + '.png')}
+                      onClick={() =>
+                        downloadDataUrl(item.dataUrl, `${sanitize(item.name)}-${i + 1}.png`)
+                      }
                       title="下载该图标"
                       className="absolute z-10 m-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm"
                     >
