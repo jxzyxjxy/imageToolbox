@@ -1,6 +1,7 @@
 import nextTs from 'eslint-config-next/typescript';
 import nextVitals from 'eslint-config-next/core-web-vitals';
 import { defineConfig, globalIgnores } from 'eslint/config';
+import importPlugin from 'eslint-plugin-import';
 
 const syntaxRules = [
   {
@@ -23,6 +24,9 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    plugins: {
+      import: importPlugin,
+    },
     settings: {
       // node_modules 里的 barrel 包（lucide-react 等）不参与 ExportMap 构建，
       // import/no-cycle 只需要项目源码的依赖图。

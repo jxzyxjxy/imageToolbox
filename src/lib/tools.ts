@@ -9,6 +9,7 @@ import {
   Wand2,
   ScanSearch,
   Sparkles,
+  LayoutGrid,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -90,6 +91,15 @@ export const tools: ToolDef[] = [
     icon: Sparkles,
     gradient: 'from-indigo-500 to-purple-600',
     accentBg: 'bg-indigo-50',
+    status: 'ready',
+  },
+  {
+    slug: 'icon-splitter',
+    name: '图标拆分',
+    description: '上传图标拼合图 / 精灵图，AI 自动拆出每个图标并单独导出 PNG。',
+    icon: LayoutGrid,
+    gradient: 'from-purple-500 to-fuchsia-600',
+    accentBg: 'bg-purple-50',
     status: 'ready',
   },
 ];
