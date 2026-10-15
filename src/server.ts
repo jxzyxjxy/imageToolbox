@@ -31,5 +31,7 @@ app.prepare().then(() => {
         dev ? 'development' : process.env.COZE_PROJECT_ENV
       }`,
     );
+    console.log(`> PORT=${port}`);
+    console.log(`> 服务已启动，访问地址：http://localhost:${port}`);
   });
 });
