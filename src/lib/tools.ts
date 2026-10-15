@@ -95,8 +95,8 @@ export const tools: ToolDef[] = [
   },
   {
     slug: 'icon-splitter',
-    name: '图标拆分',
-    description: '上传图标拼合图 / 精灵图，AI 自动拆出每个图标并单独导出 PNG。',
+    name: '图标拆分 · 雪碧图',
+    description: '识别图片中每个 icon，智能高清、去除阴影，一键组合导出雪碧图。',
     icon: LayoutGrid,
     gradient: 'from-purple-500 to-fuchsia-600',
     accentBg: 'bg-purple-50',
