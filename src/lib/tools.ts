@@ -10,6 +10,7 @@ import {
   ScanSearch,
   Sparkles,
   LayoutGrid,
+  Images,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -100,6 +101,15 @@ export const tools: ToolDef[] = [
     icon: LayoutGrid,
     gradient: 'from-purple-500 to-fuchsia-600',
     accentBg: 'bg-purple-50',
+    status: 'ready',
+  },
+  {
+    slug: 'similar',
+    name: '生成相似图',
+    description: '以上传图片为参考，AI 生成风格相近的新图，可自定义尺寸与相似度。',
+    icon: Images,
+    gradient: 'from-fuchsia-500 to-purple-600',
+    accentBg: 'bg-fuchsia-50',
     status: 'ready',
   },
 ];
