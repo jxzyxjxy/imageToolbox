@@ -17,6 +17,9 @@ echo "==> 2/3 生产构建 (pnpm build)"
 pnpm build
 
 echo "==> 3/3 PM2 常驻重启"
+# 锁定当前 shell 使用的 node（要求 Node >= 20），避免 PM2 守护进程误用系统旧版 Node
+export NODE_BIN="$(command -v node)"
+echo "==> Node 解释器：${NODE_BIN} ($("${NODE_BIN}" -v))"
 pm2 delete "${APP_NAME}" >/dev/null 2>&1 || true
 pm2 start ecosystem.config.cjs  # 端口与环境经 ecosystem env 块注入，勿加 --env（该参数需带值）
 

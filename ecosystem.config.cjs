@@ -9,7 +9,8 @@ module.exports = {
       name: 'imageToolbox',
       cwd: __dirname,
       script: './dist/server.js',
-      interpreter: 'node',
+      // 锁定当前 PATH 中实际使用的 node（避免 PM2 守护进程使用系统旧版 Node，要求 Node >= 20）
+      interpreter: process.env.NODE_BIN || 'node',
       instances: 1,
       autorestart: true,          // 崩溃自动重启
       max_memory_restart: '600M', // 内存超限自动重启
