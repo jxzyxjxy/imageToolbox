@@ -18,7 +18,7 @@ pnpm build
 
 echo "==> 3/3 PM2 常驻重启"
 pm2 delete "${APP_NAME}" >/dev/null 2>&1 || true
-pm2 start ecosystem.config.cjs --env  # 端口经 ecosystem env 注入
+pm2 start ecosystem.config.cjs  # 端口与环境经 ecosystem env 块注入，勿加 --env（该参数需带值）
 
 echo "==> 保存 PM2 进程表（断电/重启后可用 pm2 resurrect 恢复）"
 pm2 save || true
