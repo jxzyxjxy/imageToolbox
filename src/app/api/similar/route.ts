@@ -3,8 +3,8 @@ import {
   ImageGenerationClient,
   Config,
   HeaderUtils,
-  S3Storage,
 } from 'coze-coding-dev-sdk';
+import { resolveReferenceImageUrl } from '@/lib/server/reference-image';
 
 export const runtime = 'nodejs';
 
@@ -80,20 +80,13 @@ export async function POST(request: NextRequest) {
     const ext = extFromMime(mime);
     const forwardHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
-    // 1. 上传参考图到对象存储，取得图生图可访问的 URL
-    const storage = new S3Storage({
-      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-      accessKey: '',
-      secretKey: '',
-      bucketName: process.env.COZE_BUCKET_NAME,
-      region: 'cn-beijing',
+    // 1. 准备参考图 URL：沙箱走对象存储签名 URL，自托管走 data URL
+    const imageUrl = await resolveReferenceImageUrl({
+      buffer,
+      mime,
+      ext,
+      keyPrefix: 'similar',
     });
-    const key = await storage.uploadFile({
-      fileContent: buffer,
-      fileName: `similar/source_${Date.now()}.${ext}`,
-      contentType: mime,
-    });
-    const imageUrl = await storage.generatePresignedUrl({ key, expireTime: 3600 });
 
     // 2. 图生图：相似度 -> 提示词强度，尺寸 -> 合法预设，张数 -> 批量并行
     const config = new Config();

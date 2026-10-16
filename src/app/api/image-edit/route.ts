@@ -3,8 +3,8 @@ import {
   ImageGenerationClient,
   Config,
   HeaderUtils,
-  S3Storage,
 } from 'coze-coding-dev-sdk';
+import { resolveReferenceImageUrl } from '@/lib/server/reference-image';
 
 export const runtime = 'nodejs';
 
@@ -46,23 +46,12 @@ export async function POST(request: NextRequest) {
     const ext = extFromMime(mime);
     const forwardHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
-    // 1. 上传到对象存储，取得永久可访问 URL
-    const storage = new S3Storage({
-      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-      accessKey: '',
-      secretKey: '',
-      bucketName: process.env.COZE_BUCKET_NAME,
-      region: 'cn-beijing',
-    });
-
-    const key = await storage.uploadFile({
-      fileContent: buffer,
-      fileName: `image-edit/source_${Date.now()}.${ext}`,
-      contentType: mime,
-    });
-    const imageUrl = await storage.generatePresignedUrl({
-      key,
-      expireTime: 3600,
+    // 1. 准备参考图 URL：沙箱走对象存储签名 URL，自托管走 data URL
+    const imageUrl = await resolveReferenceImageUrl({
+      buffer,
+      mime,
+      ext,
+      keyPrefix: 'image-edit',
     });
 
     // 2. 调用 AI 图生图，按模式语义修复
