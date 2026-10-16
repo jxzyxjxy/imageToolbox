@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   // outputFileTracingRoot: path.resolve(__dirname, '../../'),  // Uncomment and add 'import path from "path"' if needed
   /* config options here */
   serverExternalPackages: ['coze-coding-dev-sdk'],
+  // 生产构建跳过类型检查（改由编辑器/pnpm ts-check 把关），大幅缩短 build 时间
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   webpack: (config, { dev }) => {
     if (dev && config.cache && config.cache.type === 'filesystem') {
       config.cache.cacheDirectory = path.resolve(
