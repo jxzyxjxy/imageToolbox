@@ -1,6 +1,35 @@
 import { createServer } from 'http';
 import { parse } from 'url';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import next from 'next';
+
+// 自托管部署时从项目根目录 .env 读取环境变量（如 COZE_API_TOKEN）。
+// 已存在的进程环境变量优先，避免覆盖 PM2/systemd 注入的值。
+function loadLocalEnv(): void {
+  const envPath = join(process.cwd(), '.env');
+  if (!existsSync(envPath)) return;
+  const content = readFileSync(envPath, 'utf8');
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadLocalEnv();
 
 // 生产判定：沙箱注入 COZE_PROJECT_ENV=PROD；自托管服务器使用标准 NODE_ENV=production
 const prod =
