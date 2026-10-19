@@ -47,7 +47,7 @@ const BG_COLORS: { name: string; value: string }[] = [
 
 async function analyzeBackground(
   imageBase64: string,
-): Promise<{ bg: [number, number, number]; uniform: boolean; note?: string }> {
+): Promise<{ bg: [number, number, number]; uniform: boolean; confidence?: number; note?: string }> {
   const res = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -87,8 +87,12 @@ export default function IdPhotoClient() {
       const thumb = drawToCanvas(sourceCanvas, 320);
       const base64 = thumb.toDataURL('image/jpeg', 0.8);
       const res = await analyzeBackground(base64);
-      setRefColor(res.bg);
-      setNote(res.note || '已识别照片背景');
+      if ((res.confidence ?? 1) >= 0.6) {
+        setRefColor(res.bg);
+        setNote(res.note || '已识别照片背景');
+      } else {
+        setNote('背景识别置信度低，已沿用本地采样参考色，可调容差微调');
+      }
     } catch {
       setNote('AI 识别失败，已使用默认参考色');
     } finally {
