@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { HeaderUtils } from 'coze-coding-dev-sdk';
 import { resolveReferenceImageUrl } from '@/lib/server/reference-image';
-import { generateImages } from '@/lib/server/image-gen';
+import { generateImages, ARK_MODEL_KEYS, type ArkModelKey } from '@/lib/server/image-gen';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +13,8 @@ interface SimilarBody {
   similarity?: number;
   /** 生成张数 1~4 */
   count?: number;
+  /** 生图模型：seedream4 | seedream5flash */
+  modelKey?: string;
 }
 
 const SIZE_MAP: Record<string, string> = {
@@ -90,6 +92,12 @@ export async function POST(request: NextRequest) {
     const prompt = buildPrompt(similarity);
     const size = SIZE_MAP[sizePreset] ?? '2K';
 
+    const modelKey: ArkModelKey = (ARK_MODEL_KEYS as string[]).includes(
+      body.modelKey ?? '',
+    )
+      ? (body.modelKey as ArkModelKey)
+      : 'seedream4';
+
     try {
       const imageUrls = await generateImages({
         prompt,
@@ -97,9 +105,10 @@ export async function POST(request: NextRequest) {
         size,
         watermark: false,
         count,
+        modelKey,
         forwardHeaders,
       });
-      return NextResponse.json({ imageUrls, similarity, size });
+      return NextResponse.json({ imageUrls, similarity, size, modelKey });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '相似图生成失败，请重试';
       return NextResponse.json({ error: msg }, { status: 502 });

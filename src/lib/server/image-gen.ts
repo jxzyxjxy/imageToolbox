@@ -3,6 +3,16 @@ import {
   Config,
 } from 'coze-coding-dev-sdk';
 
+/** 前端可选的方舟生图模型 */
+export type ArkModelKey = 'seedream4' | 'seedream5flash';
+
+const ARK_MODEL_MAP: Record<ArkModelKey, string> = {
+  seedream4: 'doubao-seedream-4-0-20260415',
+  seedream5flash: 'doubao-seedream-5-0-flash-260915',
+};
+
+export const ARK_MODEL_KEYS = Object.keys(ARK_MODEL_MAP) as ArkModelKey[];
+
 interface GenerateImagesParams {
   prompt: string;
   /** 参考图：http(s) URL 或 data URL */
@@ -12,6 +22,8 @@ interface GenerateImagesParams {
   watermark?: boolean;
   /** 生成张数，1~4 */
   count?: number;
+  /** 方舟模型选择（仅配置 ARK_API_KEY 时生效），默认 Seedream 4.0 */
+  modelKey?: ArkModelKey;
   forwardHeaders?: Record<string, string>;
 }
 
@@ -39,7 +51,10 @@ async function generateWithArk(
   const baseUrl = (
     process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3'
   ).replace(/\/$/, '');
-  const model = process.env.ARK_MODEL || 'doubao-seedream-4-0-20260415';
+  const model =
+    process.env.ARK_MODEL ||
+    ARK_MODEL_MAP[params.modelKey ?? 'seedream4'] ||
+    ARK_MODEL_MAP.seedream4;
 
   const results = await Promise.all(
     Array.from({ length: count }, async () => {

@@ -1,7 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { Layers, Download, Images } from 'lucide-react';
+import { Layers, Download, Images, Sparkles, Zap } from 'lucide-react';
+
+type ModelKey = 'seedream4' | 'seedream5flash';
+
+const MODEL_OPTIONS: {
+  key: ModelKey;
+  label: string;
+  desc: string;
+  icon: typeof Sparkles;
+}[] = [
+  { key: 'seedream4', label: 'Seedream 4.0', desc: '稳定高质', icon: Sparkles },
+  { key: 'seedream5flash', label: '5.0 Flash', desc: '新版快速', icon: Zap },
+];
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
@@ -31,6 +43,7 @@ function similarityText(v: number): string {
 export function SimilarClient() {
   const [imageUrl, setImageUrl] = useState('');
   const [fileName, setFileName] = useState('image');
+  const [modelKey, setModelKey] = useState<ModelKey>('seedream4');
   const [sizePreset, setSizePreset] = useState('auto');
   const [similarity, setSimilarity] = useState(70);
   const [count, setCount] = useState(1);
@@ -61,6 +74,7 @@ export function SimilarClient() {
           sizePreset,
           similarity,
           count,
+          modelKey,
         }),
       });
       const genData = await genRes.json();
@@ -122,6 +136,51 @@ export function SimilarClient() {
             </div>
 
             <div className="space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
+              {/* 生图模型 */}
+              <div>
+                <p className="text-sm font-semibold text-slate-800">生图模型</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {MODEL_OPTIONS.map((opt) => {
+                    const Icon = opt.icon;
+                    const active = modelKey === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setModelKey(opt.key)}
+                        className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                          active
+                            ? 'border-indigo-400 bg-indigo-50'
+                            : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                            active
+                              ? 'bg-gradient-to-br from-indigo-500 to-violet-500 text-white'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span
+                            className={`block truncate text-[13px] font-semibold ${
+                              active ? 'text-indigo-600' : 'text-slate-700'
+                            }`}
+                          >
+                            {opt.label}
+                          </span>
+                          <span className="block truncate text-[11px] text-slate-400">
+                            {opt.desc}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* 输出尺寸 */}
               <div>
                 <div className="flex items-center gap-2">
