@@ -107,19 +107,30 @@ export default function IdPhoto() {
         octx.fillRect(0, 0, sp.w, sp.h);
 
         if (bbox.w > 0 && bbox.h > 0) {
+          // 整图等比缩放，bbox 中心锚定输出中心并上移 4%（与 H5 视觉等价，避免变形）
           const cx = bbox.x + bbox.w / 2;
           const cy = bbox.y + bbox.h / 2;
           const scale = Math.max(sp.w / bbox.w, sp.h / bbox.h);
-          const dw = bbox.w * scale;
-          const dh = bbox.h * scale;
-          const dx = sp.w / 2 - (cx - bbox.x) * scale;
-          const dy = sp.h / 2 - (cy - bbox.y) * scale - sp.h * 0.04;
+          const dw = size.w * scale;
+          const dh = size.h * scale;
+          const dx = sp.w / 2 - cx * scale;
+          const dy = sp.h / 2 - cy * scale - sp.h * 0.04;
           octx.drawImage(subject as unknown as never, dx, dy, dw, dh);
         } else {
-          octx.drawImage(subject as unknown as never, 0, 0, sp.w, sp.h);
+          // 兜底：contain 等比适配，绝不拉伸变形
+          const scale = Math.min(sp.w / size.w, sp.h / size.h);
+          const dw = size.w * scale;
+          const dh = size.h * scale;
+          octx.drawImage(
+            subject as unknown as never,
+            (sp.w - dw) / 2,
+            (sp.h - dh) / 2,
+            dw,
+            dh,
+          );
         }
 
-        const path = await canvasToTempFile(out, { fileType: 'jpg', quality: 0.92 });
+        const path = await canvasToTempFile(out, { fileType: 'jpg', quality: 0.95 });
         setResult(path);
       } catch (err) {
         console.error(err);
