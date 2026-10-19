@@ -64,6 +64,13 @@ export async function dataUrlToTempFile(
   return filePath;
 }
 
+/** 本地文件转 dataURL */
+export function fileToDataUrl(filePath: string, mime = 'image/png'): string {
+  const fs = Taro.getFileSystemManager();
+  const base64 = fs.readFileSync(filePath, 'base64') as string;
+  return `data:${mime};base64,${base64}`;
+}
+
 /** 保存本地图片文件到相册（含权限提示） */
 export async function saveToAlbum(filePath: string): Promise<void> {
   try {

@@ -4,6 +4,12 @@ export default defineAppConfig({
     'pages/similar/index',
     'pages/compress/index',
     'pages/restore/index',
+    'pages/id-photo/index',
+    'pages/remove-bg/index',
+    'pages/remove-watermark/index',
+    'pages/smart-eraser/index',
+    'pages/upscale/index',
+    'pages/icon-splitter/index',
   ],
   window: {
     backgroundTextStyle: 'light',

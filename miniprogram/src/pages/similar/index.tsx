@@ -26,8 +26,12 @@ const BG_OPTIONS = [
 const COUNTS = [1, 2, 4];
 
 interface SimilarResponse {
-  images: string[];
+  imageUrls?: string[];
   format?: string;
+}
+
+interface FetchImageResponse {
+  dataUrl?: string;
 }
 
 export default function Similar() {
@@ -77,7 +81,7 @@ export default function Similar() {
     Taro.showLoading({ title: '生成中，请稍候…', mask: true });
     try {
       const data = await post<SimilarResponse>('/api/similar', {
-        image: image.dataUrl,
+        imageBase64: image.dataUrl,
         width: w,
         height: h,
         similarity,
@@ -85,17 +89,23 @@ export default function Similar() {
         modelKey,
         transparent: bgMode === 'transparent',
       });
-      if (!data.images?.length) throw new Error('未返回图片');
+      if (!data.imageUrls?.length) throw new Error('未返回图片');
       const fmt = data.format === 'png' ? 'png' : 'jpeg';
       setResultFormat(fmt);
       const paths: string[] = [];
-      for (const img of data.images) {
-        if (img.startsWith('data:')) {
-          paths.push(await dataUrlToTempFile(img, fmt));
-        } else {
-          paths.push(img);
+      for (const img of data.imageUrls) {
+        // data: 直接写临时文件；远程 URL 走服务端代理转 dataURL（保证可保存相册）
+        let dataUrl = img;
+        if (!img.startsWith('data:')) {
+          const proxy = await post<FetchImageResponse>('/api/fetch-image', {
+            url: img,
+          });
+          if (!proxy.dataUrl) continue;
+          dataUrl = proxy.dataUrl;
         }
+        paths.push(await dataUrlToTempFile(dataUrl, fmt));
       }
+      if (paths.length === 0) throw new Error('结果加载失败');
       setResults(paths);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '生成失败，请重试';

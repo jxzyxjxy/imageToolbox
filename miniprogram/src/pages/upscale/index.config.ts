@@ -1,0 +1,5 @@
+export default definePageConfig({
+  navigationBarTitleText: '高清放大',
+  navigationBarBackgroundColor: '#06b6d4',
+  navigationBarTextStyle: 'white',
+});

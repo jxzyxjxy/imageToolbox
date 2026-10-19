@@ -10,9 +10,12 @@ import {
 } from '../../utils/image';
 import './index.scss';
 
-interface RestoreResponse {
-  image?: string;
-  images?: string[];
+interface EditResponse {
+  imageUrl?: string;
+}
+
+interface FetchImageResponse {
+  dataUrl?: string;
 }
 
 export default function Restore() {
@@ -40,15 +43,17 @@ export default function Restore() {
     setResult('');
     Taro.showLoading({ title: '修复中，约需 1 分钟…', mask: true });
     try {
-      const data = await post<RestoreResponse>('/api/image-edit', {
+      const data = await post<EditResponse>('/api/image-edit', {
+        imageBase64: image.dataUrl,
         mode: 'restore',
-        image: image.dataUrl,
       });
-      const out = data.image || data.images?.[0];
-      if (!out) throw new Error('未返回图片');
-      const path = out.startsWith('data:')
-        ? await dataUrlToTempFile(out, 'jpeg')
-        : out;
+      if (!data.imageUrl) throw new Error('未返回图片');
+      // 远程 URL 走服务端代理转 dataURL，再写临时文件用于预览/保存
+      const proxy = await post<FetchImageResponse>('/api/fetch-image', {
+        url: data.imageUrl,
+      });
+      if (!proxy.dataUrl) throw new Error('结果加载失败');
+      const path = await dataUrlToTempFile(proxy.dataUrl, 'jpeg');
       setResult(path);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '修复失败，请重试';

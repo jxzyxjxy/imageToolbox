@@ -1,0 +1,5 @@
+export default definePageConfig({
+  navigationBarTitleText: 'AI 证件照',
+  navigationBarBackgroundColor: '#0ea5e9',
+  navigationBarTextStyle: 'white',
+});
