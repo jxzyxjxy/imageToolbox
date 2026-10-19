@@ -23,15 +23,9 @@ interface ResultItem {
   url: string;
 }
 
-/** 方舟生图模型输出尺寸限制：各边 720 ~ 4096 px */
+/** 方舟生图模型输出尺寸限制：单边 720 ~ 4096 px，总像素 ≥ 921600 */
 const MIN_SIDE = 720;
 const MAX_SIDE = 4096;
-
-function clampInputSize(v: string): string {
-  const n = Number.parseInt(v, 10);
-  if (!Number.isFinite(n)) return v;
-  return String(Math.min(MAX_SIDE, Math.max(MIN_SIDE, n)));
-}
 
 const COUNT_OPTIONS = [1, 2, 3, 4];
 
@@ -223,7 +217,6 @@ export function SimilarClient() {
                     inputMode="numeric"
                     value={width}
                     onChange={(e) => setWidth(e.target.value)}
-                    onBlur={(e) => setWidth(clampInputSize(e.target.value))}
                     placeholder="宽度"
                     className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                   />
@@ -233,7 +226,6 @@ export function SimilarClient() {
                     inputMode="numeric"
                     value={height}
                     onChange={(e) => setHeight(e.target.value)}
-                    onBlur={(e) => setHeight(clampInputSize(e.target.value))}
                     placeholder="高度"
                     className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                   />
@@ -251,8 +243,8 @@ export function SimilarClient() {
                   )}
                 </div>
                 <p className="mt-1.5 text-[11px] text-slate-400">
-                  单边 {MIN_SIDE}~{MAX_SIDE} px，总像素不低于约 92 万
-                  （1280×720）；不足时按原图比例自动放大，默认与原图一致
+                  宽高比始终保持不变；尺寸过小会按原比例自动放大（模型要求
+                  单边 ≥{MIN_SIDE}、总像素 ≥92 万），最长边 {MAX_SIDE} px
                 </p>
               </div>
 

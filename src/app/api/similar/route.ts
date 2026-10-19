@@ -24,18 +24,29 @@ const MIN_SIDE = 720;
 const MAX_SIDE = 4096;
 const MIN_AREA = 921600;
 
-function clampSide(v: number): number {
-  return Math.min(MAX_SIDE, Math.max(MIN_SIDE, Math.round(v)));
-}
-
-/** 归一化尺寸：先钳制单边，再保证总像素达标（不足时按比例放大） */
+/**
+ * 归一化尺寸：全程保持宽高比。
+ * 1. 计算同时满足「短边 ≥ 720」和「总面积 ≥ 921600」的最小等比放大系数；
+ * 2. 若长边超过 4096 再等比缩小（此时短边/面积可能被迫让步，仅极端比例触发）；
+ * 3. 最后对无法两全的极端比例做兜底钳制。
+ */
 function normalizeSize(w0: number, h0: number): { w: number; h: number } {
-  let w = clampSide(w0);
-  let h = clampSide(h0);
-  if (w * h < MIN_AREA) {
-    const k = Math.sqrt(MIN_AREA / (w * h));
-    w = Math.min(MAX_SIDE, Math.ceil(w * k));
-    h = Math.min(MAX_SIDE, Math.ceil(h * k));
+  const k1 = MIN_SIDE / Math.min(w0, h0);
+  const k2 = Math.sqrt(MIN_AREA / (w0 * h0));
+  const k = Math.max(1, k1, k2);
+  let w = Math.ceil(w0 * k);
+  let h = Math.ceil(h0 * k);
+
+  if (Math.max(w, h) > MAX_SIDE) {
+    const kd = MAX_SIDE / Math.max(w, h);
+    w = Math.floor(w * kd);
+    h = Math.floor(h * kd);
+    if (w < MIN_SIDE) w = MIN_SIDE;
+    if (h < MIN_SIDE) h = MIN_SIDE;
+    if (w * h < MIN_AREA) {
+      if (w <= h) w = Math.ceil(MIN_AREA / h);
+      else h = Math.ceil(MIN_AREA / w);
+    }
   }
   return { w, h };
 }
