@@ -1,7 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Layers, Download, Images, Sparkles, Zap } from 'lucide-react';
+import {
+  Layers,
+  Download,
+  Images,
+  Sparkles,
+  Zap,
+  Eraser,
+  Mountain,
+} from 'lucide-react';
 
 type ModelKey = 'seedream4' | 'seedream5flash';
 
@@ -14,6 +22,11 @@ const MODEL_OPTIONS: {
   { key: 'seedream4', label: 'Seedream 4.0', desc: '稳定高质', icon: Sparkles },
   { key: 'seedream5flash', label: '5.0 Flash', desc: '新版快速', icon: Zap },
 ];
+
+const BG_OPTIONS = [
+  { key: 'default', label: '默认氛围', desc: 'AI 自由发挥背景', icon: Mountain },
+  { key: 'transparent', label: '透明背景', desc: '抠出主体 PNG', icon: Eraser },
+] as const;
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
@@ -39,6 +52,7 @@ export function SimilarClient() {
   const [imageUrl, setImageUrl] = useState('');
   const [fileName, setFileName] = useState('image');
   const [modelKey, setModelKey] = useState<ModelKey>('seedream4');
+  const [transparent, setTransparent] = useState(false);
   const [origSize, setOrigSize] = useState<{ w: number; h: number } | null>(
     null,
   );
@@ -90,6 +104,7 @@ export function SimilarClient() {
           similarity,
           count,
           modelKey,
+          transparent,
         }),
       });
       const genData = await genRes.json();
@@ -97,9 +112,13 @@ export function SimilarClient() {
         throw new Error(genData.error || '生成失败，请重试');
       }
 
-      // 2. 逐张转成本地可预览/下载的 dataURL
+      // 2. 逐张转成本地可预览/下载的 dataURL（透明模式后端直接返回 dataURL）
       const items: ResultItem[] = [];
       for (const remote of genData.imageUrls as string[]) {
+        if (remote.startsWith('data:')) {
+          items.push({ url: remote });
+          continue;
+        }
         const fetchRes = await fetch('/api/fetch-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -122,7 +141,8 @@ export function SimilarClient() {
   };
 
   const handleDownloadOne = (url: string, index: number) => {
-    downloadDataUrl(url, `${fileName}_similar_${index + 1}.png`);
+    const ext = url.startsWith('data:image/jpeg') ? 'jpg' : 'png';
+    downloadDataUrl(url, `${fileName}_similar_${index + 1}.${ext}`);
   };
 
   const handleDownloadAll = () => {
@@ -194,6 +214,60 @@ export function SimilarClient() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* 背景 */}
+              <div>
+                <p className="text-sm font-semibold text-slate-800">背景</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {BG_OPTIONS.map((opt) => {
+                    const Icon = opt.icon;
+                    const active =
+                      (opt.key === 'transparent') === transparent;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() =>
+                          setTransparent(opt.key === 'transparent')
+                        }
+                        className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                          active
+                            ? 'border-indigo-400 bg-indigo-50'
+                            : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                            active
+                              ? 'bg-gradient-to-br from-indigo-500 to-violet-500 text-white'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span
+                            className={`block truncate text-[13px] font-semibold ${
+                              active ? 'text-indigo-600' : 'text-slate-700'
+                            }`}
+                          >
+                            {opt.label}
+                          </span>
+                          <span className="block truncate text-[11px] text-slate-400">
+                            {opt.desc}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {transparent && (
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    适合按钮、图标、Logo 等素材：主体之外自动透明，保存为
+                    PNG；复杂边缘可能有少量残留
+                  </p>
+                )}
               </div>
 
               {/* 输出尺寸 */}

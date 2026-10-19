@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { HeaderUtils } from 'coze-coding-dev-sdk';
 import { resolveReferenceImageUrl } from '@/lib/server/reference-image';
 import { generateImages, ARK_MODEL_KEYS, type ArkModelKey } from '@/lib/server/image-gen';
+import { removeWhiteBackground } from '@/lib/server/remove-bg';
 
 export const runtime = 'nodejs';
 
@@ -17,6 +18,8 @@ interface SimilarBody {
   count?: number;
   /** 生图模型：seedream4 | seedream5flash */
   modelKey?: string;
+  /** 透明背景模式：白底生成后服务端抠图，返回 PNG data URL */
+  transparent?: boolean;
 }
 
 /** 方舟生图模型对输出尺寸的限制：各边 [720, 4096]，总像素至少 921600（1280×720） */
@@ -132,7 +135,15 @@ export async function POST(request: NextRequest) {
 
     // 2. 图生图：相似度 -> 提示词强度，尺寸 -> 自定义宽高，张数 -> 批量并行
     //    自托管配置 ARK_API_KEY 时走火山方舟，否则走 Coze 集成网关
-    const prompt = buildPrompt(similarity);
+    const transparent = body.transparent === true;
+    let prompt = buildPrompt(similarity);
+    if (transparent) {
+      // 透明模式：要求模型输出纯白底、无氛围渲染的主体图，便于服务端抠图
+      prompt +=
+        '重要：将主体完整、居中地呈现在纯白色（#FFFFFF）背景上，' +
+        '不要阴影、不要渐变、不要装饰元素、不要环境氛围渲染，' +
+        '主体边缘清晰，背景必须是纯净均匀的白色。';
+    }
 
     const modelKey: ArkModelKey = (ARK_MODEL_KEYS as string[]).includes(
       body.modelKey ?? '',
@@ -150,6 +161,32 @@ export async function POST(request: NextRequest) {
         modelKey,
         forwardHeaders,
       });
+
+      // 3. 透明模式：逐张抠掉白底，转为 PNG data URL 返回
+      if (transparent) {
+        const processed: string[] = [];
+        for (const u of imageUrls) {
+          const res = await fetch(u);
+          if (!res.ok) continue;
+          const buf = Buffer.from(await res.arrayBuffer());
+          const png = await removeWhiteBackground(buf);
+          processed.push(`data:image/png;base64,${png.toString('base64')}`);
+        }
+        if (processed.length === 0) {
+          return NextResponse.json(
+            { error: '透明背景处理失败，请重试' },
+            { status: 502 },
+          );
+        }
+        return NextResponse.json({
+          imageUrls: processed,
+          similarity,
+          size,
+          modelKey,
+          format: 'png',
+        });
+      }
+
       return NextResponse.json({ imageUrls, similarity, size, modelKey });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '相似图生成失败，请重试';
