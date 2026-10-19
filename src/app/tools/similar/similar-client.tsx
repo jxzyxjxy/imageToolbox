@@ -251,7 +251,8 @@ export function SimilarClient() {
                   )}
                 </div>
                 <p className="mt-1.5 text-[11px] text-slate-400">
-                  支持 {MIN_SIDE} ~ {MAX_SIDE} px，默认与原图一致
+                  单边 {MIN_SIDE}~{MAX_SIDE} px，总像素不低于约 92 万
+                  （1280×720）；不足时按原图比例自动放大，默认与原图一致
                 </p>
               </div>
 

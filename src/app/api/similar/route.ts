@@ -19,12 +19,25 @@ interface SimilarBody {
   modelKey?: string;
 }
 
-/** 方舟生图模型对输出尺寸的限制：各边需在 [720, 4096] 之间 */
+/** 方舟生图模型对输出尺寸的限制：各边 [720, 4096]，总像素至少 921600（1280×720） */
 const MIN_SIDE = 720;
 const MAX_SIDE = 4096;
+const MIN_AREA = 921600;
 
 function clampSide(v: number): number {
   return Math.min(MAX_SIDE, Math.max(MIN_SIDE, Math.round(v)));
+}
+
+/** 归一化尺寸：先钳制单边，再保证总像素达标（不足时按比例放大） */
+function normalizeSize(w0: number, h0: number): { w: number; h: number } {
+  let w = clampSide(w0);
+  let h = clampSide(h0);
+  if (w * h < MIN_AREA) {
+    const k = Math.sqrt(MIN_AREA / (w * h));
+    w = Math.min(MAX_SIDE, Math.ceil(w * k));
+    h = Math.min(MAX_SIDE, Math.ceil(h * k));
+  }
+  return { w, h };
 }
 
 function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
@@ -85,7 +98,13 @@ export async function POST(request: NextRequest) {
       body.width > 0 &&
       body.height > 0;
     const size = hasCustomSize
-      ? `${clampSide(body.width as number)}x${clampSide(body.height as number)}`
+      ? (() => {
+          const { w, h } = normalizeSize(
+            body.width as number,
+            body.height as number,
+          );
+          return `${w}x${h}`;
+        })()
       : '2K';
 
     const { mime, buffer } = parseDataUrl(imageBase64);
