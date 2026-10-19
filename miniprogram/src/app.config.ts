@@ -1,0 +1,15 @@
+export default defineAppConfig({
+  pages: [
+    'pages/index/index',
+    'pages/similar/index',
+    'pages/compress/index',
+    'pages/restore/index',
+  ],
+  window: {
+    backgroundTextStyle: 'light',
+    backgroundColor: '#f5f6fa',
+    navigationBarBackgroundColor: '#6366f1',
+    navigationBarTitleText: '图片工具箱',
+    navigationBarTextStyle: 'white',
+  },
+});

@@ -1,0 +1,27 @@
+page {
+  background-color: #f5f6fa;
+  color: #1e293b;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+
+view,
+text,
+button,
+input,
+image {
+  box-sizing: border-box;
+}
+
+button {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+  line-height: inherit;
+  font-size: inherit;
+
+  &::after {
+    border: none;
+  }
+}

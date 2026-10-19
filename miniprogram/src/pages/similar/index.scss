@@ -1,0 +1,270 @@
+.page {
+  min-height: 100vh;
+  padding: 32rpx 32rpx 0;
+}
+
+.banner {
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  border-radius: 40rpx;
+  padding: 40rpx 36rpx;
+  box-shadow: 0 12rpx 32rpx rgba(99, 102, 241, 0.35);
+
+  &__title {
+    display: block;
+    font-size: 36rpx;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  &__desc {
+    display: block;
+    margin-top: 8rpx;
+    font-size: 26rpx;
+    color: rgba(255, 255, 255, 0.85);
+  }
+}
+
+.card {
+  margin-top: 28rpx;
+  background: #ffffff;
+  border-radius: 40rpx;
+  padding: 36rpx;
+  box-shadow: 0 8rpx 32rpx rgba(30, 41, 59, 0.06);
+
+  &__label {
+    display: block;
+    font-size: 28rpx;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 20rpx;
+  }
+
+  &__label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20rpx;
+
+    .card__label {
+      margin-bottom: 0;
+    }
+  }
+
+  &__value {
+    font-size: 28rpx;
+    font-weight: 700;
+    color: #6366f1;
+  }
+
+  &__action {
+    font-size: 24rpx;
+    color: #6366f1;
+    padding: 8rpx 20rpx;
+    background: #eef2ff;
+    border-radius: 999rpx;
+  }
+
+  &__tip {
+    display: block;
+    margin-top: 16rpx;
+    font-size: 24rpx;
+    color: #94a3b8;
+  }
+}
+
+/* 选图 */
+.pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  &--empty {
+    height: 280rpx;
+    border: 2rpx dashed #cbd5e1;
+    border-radius: 32rpx;
+    justify-content: center;
+  }
+
+  &__plus {
+    font-size: 64rpx;
+    color: #94a3b8;
+  }
+
+  &__hint {
+    margin-top: 12rpx;
+    font-size: 26rpx;
+    color: #94a3b8;
+  }
+
+  &__img {
+    width: 100%;
+    height: 360rpx;
+    background: #f1f5f9;
+    border-radius: 32rpx;
+  }
+
+  &__meta {
+    margin-top: 16rpx;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  &__size {
+    font-size: 24rpx;
+    color: #64748b;
+  }
+
+  &__re {
+    margin-top: 4rpx;
+    font-size: 22rpx;
+    color: #94a3b8;
+  }
+}
+
+/* 选项卡片 */
+.row {
+  display: flex;
+  gap: 20rpx;
+}
+
+.opt {
+  flex: 1;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 28rpx;
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  &--active {
+    border-color: #818cf8;
+    background: #eef2ff;
+  }
+
+  &__name {
+    font-size: 28rpx;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  &__desc {
+    margin-top: 6rpx;
+    font-size: 22rpx;
+    color: #64748b;
+  }
+}
+
+/* 尺寸输入 */
+.size-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.size-input {
+  flex: 1;
+  height: 88rpx;
+  background: #f8fafc;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 24rpx;
+  padding: 0 28rpx;
+  font-size: 30rpx;
+  color: #1e293b;
+}
+
+.size-x {
+  font-size: 32rpx;
+  color: #94a3b8;
+}
+
+/* 张数 chip */
+.chip {
+  flex: 1;
+  height: 72rpx;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  color: #475569;
+
+  &--active {
+    border-color: #818cf8;
+    background: #eef2ff;
+    color: #4f46e5;
+    font-weight: 600;
+  }
+}
+
+/* 结果 */
+.results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+
+  &__item {
+    width: calc(50% - 10rpx);
+    display: flex;
+    flex-direction: column;
+  }
+
+  &--single &__item {
+    width: 100%;
+  }
+
+  &__img {
+    width: 100%;
+    height: 320rpx;
+    background: #f1f5f9;
+    border-radius: 28rpx;
+  }
+
+  &--single &__img {
+    height: 520rpx;
+  }
+
+  &__save {
+    margin-top: 14rpx;
+    height: 64rpx;
+    border-radius: 999rpx;
+    background: #eef2ff;
+    color: #4f46e5;
+    font-size: 26rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* 底部按钮 */
+.footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: rgba(245, 246, 250, 0.96);
+
+  &__btn {
+    height: 96rpx;
+    border-radius: 32rpx;
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    color: #ffffff;
+    font-size: 32rpx;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 12rpx 32rpx rgba(99, 102, 241, 0.4);
+
+    &--disabled {
+      opacity: 0.6;
+    }
+  }
+}
+
+.footer-placeholder {
+  height: 180rpx;
+}

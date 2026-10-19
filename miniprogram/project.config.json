@@ -1,0 +1,20 @@
+{
+  "miniprogramRoot": "dist/",
+  "projectname": "image-toolbox-miniprogram",
+  "description": "图片工具箱小程序",
+  "appid": "touristappid",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": false,
+    "minified": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "compileType": "miniprogram",
+  "libVersion": "latest"
+}
