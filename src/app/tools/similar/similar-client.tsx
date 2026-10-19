@@ -23,14 +23,15 @@ interface ResultItem {
   url: string;
 }
 
-const SIZE_OPTIONS: { key: string; label: string }[] = [
-  { key: 'auto', label: '自动' },
-  { key: 'square', label: '1:1' },
-  { key: 'portrait34', label: '3:4' },
-  { key: 'landscape43', label: '4:3' },
-  { key: 'portrait916', label: '9:16' },
-  { key: 'landscape169', label: '16:9' },
-];
+/** 方舟生图模型输出尺寸限制：各边 720 ~ 4096 px */
+const MIN_SIDE = 720;
+const MAX_SIDE = 4096;
+
+function clampInputSize(v: string): string {
+  const n = Number.parseInt(v, 10);
+  if (!Number.isFinite(n)) return v;
+  return String(Math.min(MAX_SIDE, Math.max(MIN_SIDE, n)));
+}
 
 const COUNT_OPTIONS = [1, 2, 3, 4];
 
@@ -44,7 +45,11 @@ export function SimilarClient() {
   const [imageUrl, setImageUrl] = useState('');
   const [fileName, setFileName] = useState('image');
   const [modelKey, setModelKey] = useState<ModelKey>('seedream4');
-  const [sizePreset, setSizePreset] = useState('auto');
+  const [origSize, setOrigSize] = useState<{ w: number; h: number } | null>(
+    null,
+  );
+  const [width, setWidth] = useState('');
+  const [height, setHeight] = useState('');
   const [similarity, setSimilarity] = useState(70);
   const [count, setCount] = useState(1);
   const [processing, setProcessing] = useState(false);
@@ -57,6 +62,18 @@ export function SimilarClient() {
     setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
     setResults([]);
     setError('');
+    // 读取原图尺寸，作为默认输出尺寸
+    const probe = new Image();
+    probe.onload = () => {
+      const w = probe.naturalWidth;
+      const h = probe.naturalHeight;
+      if (w > 0 && h > 0) {
+        setOrigSize({ w, h });
+        setWidth(String(w));
+        setHeight(String(h));
+      }
+    };
+    probe.src = url;
   };
 
   const handleGenerate = async () => {
@@ -66,12 +83,16 @@ export function SimilarClient() {
     setResults([]);
     try {
       // 1. AI 图生图（后端 similar）
+      const wNum = Number.parseInt(width, 10);
+      const hNum = Number.parseInt(height, 10);
       const genRes = await fetch('/api/similar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageBase64: imageUrl,
-          sizePreset,
+          ...(Number.isFinite(wNum) && Number.isFinite(hNum)
+            ? { width: wNum, height: hNum }
+            : {}),
           similarity,
           count,
           modelKey,
@@ -183,26 +204,55 @@ export function SimilarClient() {
 
               {/* 输出尺寸 */}
               <div>
-                <div className="flex items-center gap-2">
-                  <Layers className="h-4.5 w-4.5 text-indigo-500" />
-                  <p className="text-sm font-semibold text-slate-800">输出尺寸</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4.5 w-4.5 text-indigo-500" />
+                    <p className="text-sm font-semibold text-slate-800">
+                      输出尺寸
+                    </p>
+                  </div>
+                  {origSize && (
+                    <p className="text-xs text-slate-400">
+                      原图 {origSize.w} × {origSize.h}
+                    </p>
+                  )}
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {SIZE_OPTIONS.map((opt) => (
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={width}
+                    onChange={(e) => setWidth(e.target.value)}
+                    onBlur={(e) => setWidth(clampInputSize(e.target.value))}
+                    placeholder="宽度"
+                    className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <span className="shrink-0 text-sm text-slate-400">×</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={height}
+                    onChange={(e) => setHeight(e.target.value)}
+                    onBlur={(e) => setHeight(clampInputSize(e.target.value))}
+                    placeholder="高度"
+                    className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  {origSize && (
                     <button
-                      key={opt.key}
                       type="button"
-                      onClick={() => setSizePreset(opt.key)}
-                      className={`rounded-xl border px-2 py-2.5 text-sm font-medium transition-colors ${
-                        sizePreset === opt.key
-                          ? 'border-indigo-400 bg-indigo-50 text-indigo-600'
-                          : 'border-slate-200 bg-white text-slate-600'
-                      }`}
+                      onClick={() => {
+                        setWidth(String(origSize.w));
+                        setHeight(String(origSize.h));
+                      }}
+                      className="shrink-0 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-medium text-indigo-600 active:bg-indigo-100"
                     >
-                      {opt.label}
+                      原图尺寸
                     </button>
-                  ))}
+                  )}
                 </div>
+                <p className="mt-1.5 text-[11px] text-slate-400">
+                  支持 {MIN_SIDE} ~ {MAX_SIDE} px，默认与原图一致
+                </p>
               </div>
 
               {/* 相似度 */}

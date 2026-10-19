@@ -7,8 +7,10 @@ export const runtime = 'nodejs';
 
 interface SimilarBody {
   imageBase64?: string;
-  /** 输出尺寸预设：auto | square | portrait34 | landscape43 | portrait916 | landscape169 */
-  sizePreset?: string;
+  /** 输出宽度（px），与 height 同时提供时生效 */
+  width?: number;
+  /** 输出高度（px） */
+  height?: number;
   /** 相似度 10~100，越高越贴近原图 */
   similarity?: number;
   /** 生成张数 1~4 */
@@ -17,14 +19,13 @@ interface SimilarBody {
   modelKey?: string;
 }
 
-const SIZE_MAP: Record<string, string> = {
-  auto: '2K',
-  square: '2880x2880',
-  portrait34: '2880x3840',
-  landscape43: '3840x2880',
-  portrait916: '2304x4096',
-  landscape169: '4096x2304',
-};
+/** 方舟生图模型对输出尺寸的限制：各边需在 [720, 4096] 之间 */
+const MIN_SIDE = 720;
+const MAX_SIDE = 4096;
+
+function clampSide(v: number): number {
+  return Math.min(MAX_SIDE, Math.max(MIN_SIDE, Math.round(v)));
+}
 
 function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
   const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUrl);
@@ -67,13 +68,25 @@ function buildPrompt(similarity: number): string {
 export async function POST(request: NextRequest) {
   try {
     const body: SimilarBody = await request.json();
-    const { imageBase64, sizePreset = 'auto' } = body;
+    const { imageBase64 } = body;
     const similarity = Math.min(100, Math.max(10, Math.round(body.similarity ?? 70)));
     const count = Math.min(4, Math.max(1, Math.round(body.count ?? 1)));
 
     if (!imageBase64) {
       return NextResponse.json({ error: '缺少图片数据' }, { status: 400 });
     }
+
+    // 输出尺寸：优先取用户输入的宽高（钳制到模型允许的 [720, 4096]），否则默认 2K
+    const hasCustomSize =
+      typeof body.width === 'number' &&
+      typeof body.height === 'number' &&
+      Number.isFinite(body.width) &&
+      Number.isFinite(body.height) &&
+      body.width > 0 &&
+      body.height > 0;
+    const size = hasCustomSize
+      ? `${clampSide(body.width as number)}x${clampSide(body.height as number)}`
+      : '2K';
 
     const { mime, buffer } = parseDataUrl(imageBase64);
     const ext = extFromMime(mime);
@@ -87,10 +100,9 @@ export async function POST(request: NextRequest) {
       keyPrefix: 'similar',
     });
 
-    // 2. 图生图：相似度 -> 提示词强度，尺寸 -> 合法预设，张数 -> 批量并行
+    // 2. 图生图：相似度 -> 提示词强度，尺寸 -> 自定义宽高，张数 -> 批量并行
     //    自托管配置 ARK_API_KEY 时走火山方舟，否则走 Coze 集成网关
     const prompt = buildPrompt(similarity);
-    const size = SIZE_MAP[sizePreset] ?? '2K';
 
     const modelKey: ArkModelKey = (ARK_MODEL_KEYS as string[]).includes(
       body.modelKey ?? '',
