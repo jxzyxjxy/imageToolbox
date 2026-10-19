@@ -9,6 +9,7 @@ import {
   getCanvas,
   loadCanvasImage,
   removeBackgroundPixels,
+  sampleCornerColorFromData,
 } from '../../utils/canvas';
 import './index.scss';
 
@@ -18,7 +19,23 @@ const PROC_MAX_DIM = 1024;
 interface AnalyzeResponse {
   bg: [number, number, number];
   uniform: boolean;
+  confidence?: number;
   note?: string;
+}
+
+/** 本地采样四角平均背景色（不依赖 AI，与证件照页一致） */
+async function sampleLocalCorner(
+  chosen: ChosenImage,
+): Promise<[number, number, number]> {
+  const size = fitSize(chosen.width, chosen.height, PROC_MAX_DIM);
+  const c = await getCanvas('rmbg-sample');
+  c.width = size.w;
+  c.height = size.h;
+  const ctx = c.getContext('2d');
+  const img = await loadCanvasImage(c, chosen.filePath);
+  ctx.drawImage(img as unknown as never, 0, 0, size.w, size.h);
+  const data = ctx.getImageData(0, 0, size.w, size.h).data;
+  return sampleCornerColorFromData(data, size.w, size.h);
 }
 
 export default function RemoveBg() {
@@ -68,13 +85,19 @@ export default function RemoveBg() {
         const res = await post<AnalyzeResponse>('/api/analyze', {
           imageBase64: img.dataUrl,
         });
-        if (Array.isArray(res.bg) && res.bg.length === 3) {
+        // 仅在高置信度时覆盖本地采样；兜底灰色（confidence=0.3）直接忽略
+        if (
+          Array.isArray(res.bg) &&
+          res.bg.length === 3 &&
+          (res.confidence === undefined || res.confidence >= 0.6)
+        ) {
           setRefColor(res.bg);
-          if (res.note) setNote(res.note);
+          setNote('AI 已识别背景色');
           return res.bg;
         }
+        setNote('已使用照片背景色，可拖动容差优化抠图');
       } catch {
-        setNote('AI 分析暂不可用，已使用默认背景色，可调容差优化效果');
+        setNote('AI 分析暂不可用，已使用照片背景色，可调容差优化效果');
       } finally {
         setAnalyzing(false);
       }
@@ -90,8 +113,12 @@ export default function RemoveBg() {
       setImage(chosen);
       setResult('');
       setTolerance(16);
-      const bg = (await analyze(chosen)) || [245, 245, 245] as [number, number, number];
-      await runCutout(chosen, bg, 16);
+      // 先本地采样立即出图，再异步 AI 增强
+      const localBg = await sampleLocalCorner(chosen);
+      setRefColor(localBg);
+      await runCutout(chosen, localBg, 16);
+      const aiBg = await analyze(chosen);
+      if (aiBg) await runCutout(chosen, aiBg, 16);
     } catch (err) {
       console.error(err);
     }
@@ -184,6 +211,18 @@ export default function RemoveBg() {
       </View>
       <View className="footer-placeholder" />
 
+      {/* 隐藏采样画布 */}
+      <Canvas
+        type="2d"
+        id="rmbg-sample"
+        style={{
+          position: 'fixed',
+          left: '-9999px',
+          top: '-9999px',
+          width: '10px',
+          height: '10px',
+        }}
+      />
       {/* 隐藏处理画布 */}
       <Canvas
         type="2d"

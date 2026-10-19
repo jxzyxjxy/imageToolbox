@@ -10,6 +10,7 @@ import {
   getSubjectBBoxFromData,
   loadCanvasImage,
   removeBackgroundPixels,
+  sampleCornerColorFromData,
 } from '../../utils/canvas';
 import './index.scss';
 
@@ -43,7 +44,23 @@ const BG_COLORS: { name: string; value: string }[] = [
 interface AnalyzeResponse {
   bg: [number, number, number];
   uniform: boolean;
+  confidence?: number;
   note?: string;
+}
+
+/** 在离屏 canvas 上采样照片四角的平均背景色（不依赖 AI） */
+async function sampleLocalCorner(
+  chosen: ChosenImage,
+): Promise<[number, number, number]> {
+  const size = fitSize(chosen.width, chosen.height, PROC_MAX_DIM);
+  const c = await getCanvas('idp-sample');
+  c.width = size.w;
+  c.height = size.h;
+  const ctx = c.getContext('2d');
+  const img = await loadCanvasImage(c, chosen.filePath);
+  ctx.drawImage(img as unknown as never, 0, 0, size.w, size.h);
+  const data = ctx.getImageData(0, 0, size.w, size.h).data;
+  return sampleCornerColorFromData(data, size.w, size.h);
 }
 
 export default function IdPhoto() {
@@ -122,23 +139,34 @@ export default function IdPhoto() {
       setResult('');
       setTolerance(16);
       setNote('');
+
+      // 1. 先本地采样四角背景色（可靠，不依赖任何 AI）
+      let bg = await sampleLocalCorner(chosen);
+      setRefColor(bg);
+      await generate(chosen, bg, 16, bgColor, spec);
+
+      // 2. 再尝试 AI 增强分析，仅在高置信度时覆盖本地采样
       setAnalyzing(true);
-      let bg: [number, number, number] = [245, 245, 245];
       try {
         const res = await post<AnalyzeResponse>('/api/analyze', {
           imageBase64: chosen.dataUrl,
         });
-        if (Array.isArray(res.bg) && res.bg.length === 3) {
+        if (
+          Array.isArray(res.bg) &&
+          res.bg.length === 3 &&
+          (res.confidence === undefined || res.confidence >= 0.6)
+        ) {
           bg = res.bg;
-          setRefColor(res.bg);
-          if (res.note) setNote(res.note);
+          setRefColor(bg);
+          setNote('AI 已识别背景色');
+        } else {
+          setNote('已使用照片背景色，可拖动容差优化抠图');
         }
       } catch {
-        setNote('AI 分析暂不可用，已使用默认背景色，可调容差优化');
+        setNote('AI 分析暂不可用，已使用照片背景色，可调容差优化');
       } finally {
         setAnalyzing(false);
       }
-      await generate(chosen, bg, 16, bgColor, spec);
     } catch (err) {
       console.error(err);
     }
@@ -268,6 +296,11 @@ export default function IdPhoto() {
       <View className="footer-placeholder" />
 
       {/* 隐藏画布 */}
+      <Canvas
+        type="2d"
+        id="idp-sample"
+        style={{ position: 'fixed', left: '-9999px', top: '-9999px', width: '10px', height: '10px' }}
+      />
       <Canvas
         type="2d"
         id="idp-subject"

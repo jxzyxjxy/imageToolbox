@@ -151,6 +151,40 @@ function featherAlpha(
 }
 
 /**
+ * 四角采样：取四个角各 6% 边长的方块求平均色，作为本地背景参考色。
+ * 不依赖 AI，analyze 不可用时的可靠兜底（与 H5 sampleCornerColor 一致）。
+ */
+export function sampleCornerColorFromData(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): [number, number, number] {
+  const size = Math.max(1, Math.round(Math.min(width, height) * 0.06));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  const corners: Array<[number, number]> = [
+    [0, 0],
+    [width - size, 0],
+    [0, height - size],
+    [width - size, height - size],
+  ];
+  for (const [cx, cy] of corners) {
+    for (let y = cy; y < cy + size; y++) {
+      for (let x = cx; x < cx + size; x++) {
+        const i = (y * width + x) * 4;
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        n++;
+      }
+    }
+  }
+  return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+}
+
+/**
  * 泛洪抠图：从四边向内部生长，把与参考背景色相近且相连的区域 alpha 置 0，
  * 羽化边缘后返回主体边界框。直接原地修改 data。
  */
