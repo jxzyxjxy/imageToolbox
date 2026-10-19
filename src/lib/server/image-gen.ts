@@ -39,7 +39,7 @@ async function generateWithArk(
   const baseUrl = (
     process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3'
   ).replace(/\/$/, '');
-  const model = process.env.ARK_MODEL || 'doubao-seedream-4-0-250828';
+  const model = process.env.ARK_MODEL || 'doubao-seedream-4-0-20260415';
 
   const results = await Promise.all(
     Array.from({ length: count }, async () => {
