@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  ImageGenerationClient,
-  Config,
-  HeaderUtils,
-} from 'coze-coding-dev-sdk';
+import { HeaderUtils } from 'coze-coding-dev-sdk';
 import { resolveReferenceImageUrl } from '@/lib/server/reference-image';
+import { generateImages } from '@/lib/server/image-gen';
 
 export const runtime = 'nodejs';
 
@@ -55,24 +52,21 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. 调用 AI 图生图，按模式语义修复
-    const config = new Config();
-    const client = new ImageGenerationClient(config, forwardHeaders);
-    const response = await client.generate({
-      prompt: PROMPTS[mode],
-      image: imageUrl,
-      size: '2K',
-      watermark: false,
-    });
-
-    const helper = client.getResponseHelper(response);
-    if (!helper.success || helper.imageUrls.length === 0) {
-      return NextResponse.json(
-        { error: helper.errorMessages.join('；') || 'AI 处理失败，请重试' },
-        { status: 502 },
-      );
+    //    自托管配置 ARK_API_KEY 时走火山方舟，否则走 Coze 集成网关
+    try {
+      const imageUrls = await generateImages({
+        prompt: PROMPTS[mode],
+        imageUrl,
+        size: '2K',
+        watermark: false,
+        count: 1,
+        forwardHeaders,
+      });
+      return NextResponse.json({ imageUrl: imageUrls[0] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'AI 处理失败，请重试';
+      return NextResponse.json({ error: msg }, { status: 502 });
     }
-
-    return NextResponse.json({ imageUrl: helper.imageUrls[0] });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : '服务器内部错误';

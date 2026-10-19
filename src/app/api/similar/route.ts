@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  ImageGenerationClient,
-  Config,
-  HeaderUtils,
-} from 'coze-coding-dev-sdk';
+import { HeaderUtils } from 'coze-coding-dev-sdk';
 import { resolveReferenceImageUrl } from '@/lib/server/reference-image';
+import { generateImages } from '@/lib/server/image-gen';
 
 export const runtime = 'nodejs';
 
@@ -89,38 +86,24 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. 图生图：相似度 -> 提示词强度，尺寸 -> 合法预设，张数 -> 批量并行
-    const config = new Config();
-    const client = new ImageGenerationClient(config, forwardHeaders);
+    //    自托管配置 ARK_API_KEY 时走火山方舟，否则走 Coze 集成网关
     const prompt = buildPrompt(similarity);
     const size = SIZE_MAP[sizePreset] ?? '2K';
 
-    const requests = Array.from({ length: count }, () => ({
-      prompt,
-      image: imageUrl,
-      size,
-      watermark: false,
-    }));
-    const responses = await client.batchGenerate(requests);
-
-    const imageUrls: string[] = [];
-    const errors: string[] = [];
-    for (const res of responses) {
-      const helper = client.getResponseHelper(res);
-      if (helper.success && helper.imageUrls.length > 0) {
-        imageUrls.push(helper.imageUrls[0]);
-      } else {
-        errors.push(...helper.errorMessages);
-      }
+    try {
+      const imageUrls = await generateImages({
+        prompt,
+        imageUrl,
+        size,
+        watermark: false,
+        count,
+        forwardHeaders,
+      });
+      return NextResponse.json({ imageUrls, similarity, size });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '相似图生成失败，请重试';
+      return NextResponse.json({ error: msg }, { status: 502 });
     }
-
-    if (imageUrls.length === 0) {
-      return NextResponse.json(
-        { error: errors[0] || '相似图生成失败，请重试' },
-        { status: 502 },
-      );
-    }
-
-    return NextResponse.json({ imageUrls, similarity, size });
   } catch (error) {
     const message = error instanceof Error ? error.message : '服务器内部错误';
     return NextResponse.json({ error: message }, { status: 500 });
