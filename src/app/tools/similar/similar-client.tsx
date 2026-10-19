@@ -264,7 +264,11 @@ export function SimilarClient() {
                     生成结果（{results.length} 张）
                   </p>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div
+                  className={`grid gap-3 ${
+                    results.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                  }`}
+                >
                   {results.map((r, i) => (
                     <div
                       key={i}
@@ -274,7 +278,11 @@ export function SimilarClient() {
                       <img
                         src={r.url}
                         alt={`相似图 ${i + 1}`}
-                        className="aspect-square w-full object-cover"
+                        className={
+                          results.length === 1
+                            ? 'max-h-[480px] w-full bg-slate-100 object-contain'
+                            : 'aspect-square w-full bg-slate-100 object-contain'
+                        }
                       />
                       <button
                         type="button"
