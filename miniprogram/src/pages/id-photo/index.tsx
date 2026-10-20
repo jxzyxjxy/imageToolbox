@@ -98,7 +98,7 @@ export default function IdPhoto() {
         const bbox = removeBackgroundPixels(imageData.data, size.w, size.h, ref, tol);
         sctx.putImageData(imageData, 0, 0);
 
-        // 2. 合成证件照（cover 适配 + 重心上移，与 H5 一致）
+        // 2. 合成证件照（人像 82% + 头顶留白 10%，与 H5 一致）
         const out = await getCanvas('idp-out');
         out.width = sp.w;
         out.height = sp.h;
@@ -107,14 +107,13 @@ export default function IdPhoto() {
         octx.fillRect(0, 0, sp.w, sp.h);
 
         if (bbox.w > 0 && bbox.h > 0) {
-          // 整图等比缩放，bbox 中心锚定输出中心并上移 4%（与 H5 视觉等价，避免变形）
+          // 证件照构图：整图等比缩放，人像约占 82%，头顶留白 10%，水平居中
           const cx = bbox.x + bbox.w / 2;
-          const cy = bbox.y + bbox.h / 2;
-          const scale = Math.max(sp.w / bbox.w, sp.h / bbox.h);
+          const scale = Math.max(sp.w / bbox.w, sp.h / bbox.h) * 0.82;
           const dw = size.w * scale;
           const dh = size.h * scale;
           const dx = sp.w / 2 - cx * scale;
-          const dy = sp.h / 2 - cy * scale - sp.h * 0.04;
+          const dy = sp.h * 0.1 - bbox.y * scale;
           octx.drawImage(subject as unknown as never, dx, dy, dw, dh);
         } else {
           // 兜底：contain 等比适配，绝不拉伸变形
