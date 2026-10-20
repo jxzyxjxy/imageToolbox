@@ -46,7 +46,7 @@ export default function EraserPage({
 
   const pickImage = async () => {
     try {
-      const chosen = await chooseImage();
+      const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
       setImage(chosen);
       setResult('');
@@ -72,7 +72,7 @@ export default function EraserPage({
       if (!composed) throw new Error('蒙版合成失败');
       const imageBase64 = fileToDataUrl(composed, 'image/png');
 
-      const data = await post<EditResponse>('/api/image-edit', {
+      const data = await post<EditResponse>('/api/mp/image-edit', {
         imageBase64,
         mode,
       });

@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro';
+import { secCheckImage } from '@/api/cloud';
 
 export interface ChosenImage {
   dataUrl: string;
@@ -9,8 +10,31 @@ export interface ChosenImage {
   size: number;
 }
 
-/** 选择一张图片，返回 dataURL、本地路径、尺寸与文件大小 */
-export async function chooseImage(): Promise<ChosenImage | null> {
+export interface ChooseImageOptions {
+  /** 是否先做内容安全检测（图片会上传服务器的工具必须开启） */
+  secCheck?: boolean;
+}
+
+/** 压缩出一张小图用于内容安全送检 */
+async function makeSecCheckBase64(filePath: string): Promise<string | null> {
+  try {
+    const compressed = await Taro.compressImage({
+      src: filePath,
+      quality: 20,
+      compressedWidth: 480,
+    });
+    const fs = Taro.getFileSystemManager();
+    return fs.readFileSync(compressed.tempFilePath, 'base64') as string;
+  } catch (e) {
+    console.warn('[secCheck] 压缩送检图失败，跳过检测:', e);
+    return null;
+  }
+}
+
+/** 选择一张图片，返回 dataURL、本地路径、尺寸与文件大小；可选内容安全检测（违规返回 null） */
+export async function chooseImage(
+  options: ChooseImageOptions = {},
+): Promise<ChosenImage | null> {
   const res = await Taro.chooseImage({
     count: 1,
     sizeType: ['original', 'compressed'],
@@ -18,6 +42,21 @@ export async function chooseImage(): Promise<ChosenImage | null> {
   });
   const filePath = res.tempFilePaths?.[0];
   if (!filePath) return null;
+
+  if (options.secCheck) {
+    const small = await makeSecCheckBase64(filePath);
+    if (small) {
+      const check = await secCheckImage(small);
+      if (!check.pass) {
+        await Taro.showToast({
+          title: check.error || '图片包含违规内容',
+          icon: 'none',
+          duration: 2500,
+        });
+        return null;
+      }
+    }
+  }
 
   const fs = Taro.getFileSystemManager();
   const base64 = fs.readFileSync(filePath, 'base64') as string;

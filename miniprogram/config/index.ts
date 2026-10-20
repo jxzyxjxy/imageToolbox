@@ -1,5 +1,10 @@
 // Taro 编译配置（微信小程序）
+import { resolve } from 'path';
+
 export default {
+  alias: {
+    '@': resolve(__dirname, '..', 'src'),
+  },
   projectName: 'image-toolbox-miniprogram',
   date: '2026-10-19',
   // 设计稿 750，代码中 1px = 2rpx

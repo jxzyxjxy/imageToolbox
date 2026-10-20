@@ -47,7 +47,7 @@ export default function IconSplitter() {
 
   const pickImage = async () => {
     try {
-      const chosen = await chooseImage();
+      const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
       setImage(chosen);
       setIcons([]);

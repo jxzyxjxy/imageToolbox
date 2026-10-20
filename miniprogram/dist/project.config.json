@@ -1,5 +1,6 @@
 {
   "miniprogramRoot": "./",
+  "cloudfunctionRoot": "cloudfunctions/",
   "projectname": "image-toolbox-miniprogram",
   "description": "图片工具箱小程序",
   "appid": "touristappid",

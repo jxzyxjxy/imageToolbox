@@ -25,7 +25,7 @@ export default function Restore() {
 
   const pickImage = async () => {
     try {
-      const chosen = await chooseImage();
+      const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
       setImage(chosen);
       setResult('');
@@ -43,7 +43,7 @@ export default function Restore() {
     setResult('');
     Taro.showLoading({ title: '修复中，约需 1 分钟…', mask: true });
     try {
-      const data = await post<EditResponse>('/api/image-edit', {
+      const data = await post<EditResponse>('/api/mp/image-edit', {
         imageBase64: image.dataUrl,
         mode: 'restore',
       });

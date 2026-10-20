@@ -1,30 +1,54 @@
 import Taro from '@tarojs/taro';
-
-/**
- * 后端服务地址（复用现有 Next.js 服务）。
- * - 开发调试：可用 http://服务器IP:5000，微信开发者工具需勾选
- *   「详情 → 本地设置 → 不校验合法域名」
- * - 正式发布：必须换成已完成 ICP 备案 + HTTPS 的域名，并在小程序
- *   后台「开发管理 → 服务器域名」配置为 request 合法域名
- */
-export const BASE_URL = 'http://47.108.179.9:5000';
+import { BASE_URL } from '@/config';
+import { fetchTicket } from './cloud';
 
 interface ApiError {
   error?: string;
 }
 
-/** POST JSON 并返回业务数据，非 200 或业务 error 时抛出 */
-export async function post<T>(
+/** 需要云函数票据的工具接口（路径 → 工具名） */
+const TICKET_TOOLS: Record<string, string> = {
+  '/api/mp/similar': 'similar',
+  '/api/mp/image-edit': 'image-edit',
+  '/api/mp/segment': 'segment',
+};
+
+interface CachedTicket {
+  ticket: string;
+  /** 本地缓存过期时间（服务端 5 分钟，客户端提前 1 分钟失效） */
+  exp: number;
+}
+
+const ticketCache = new Map<string, CachedTicket>();
+
+async function getCachedTicket(tool: string): Promise<string> {
+  const cached = ticketCache.get(tool);
+  if (cached && Date.now() < cached.exp) return cached.ticket;
+  const res = await fetchTicket(tool);
+  ticketCache.set(tool, {
+    ticket: res.ticket as string,
+    exp: Date.now() + 4 * 60 * 1000,
+  });
+  return res.ticket as string;
+}
+
+async function rawPost(
   path: string,
   data: Record<string, unknown>,
-): Promise<T> {
-  const res = await Taro.request({
+  ticket?: string,
+): Promise<Taro.request.SuccessCallbackResult> {
+  const header: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (ticket) header['x-mp-ticket'] = ticket;
+  return Taro.request({
     url: BASE_URL + path,
     method: 'POST',
     data,
-    header: { 'Content-Type': 'application/json' },
+    header,
     timeout: 180000,
   });
+}
+
+function unwrap<T>(res: Taro.request.SuccessCallbackResult): T {
   const body = res.data as (T & ApiError) | undefined;
   if (res.statusCode !== 200) {
     throw new Error(body?.error || `请求失败（${res.statusCode}）`);
@@ -33,4 +57,26 @@ export async function post<T>(
     throw new Error(body.error);
   }
   return body as T;
+}
+
+/**
+ * POST JSON 并返回业务数据。
+ * /api/mp/* 接口自动携带云函数票据；401（票据过期/无效）时刷新票据重试一次。
+ */
+export async function post<T>(
+  path: string,
+  data: Record<string, unknown>,
+): Promise<T> {
+  const tool = TICKET_TOOLS[path];
+  if (!tool) {
+    return unwrap<T>(await rawPost(path, data));
+  }
+  let ticket = await getCachedTicket(tool);
+  let res = await rawPost(path, data, ticket);
+  if (res.statusCode === 401) {
+    ticketCache.delete(tool);
+    ticket = await getCachedTicket(tool);
+    res = await rawPost(path, data, ticket);
+  }
+  return unwrap<T>(res);
 }

@@ -123,7 +123,7 @@ export default function RemoveBg() {
 
   const pickImage = async () => {
     try {
-      const chosen = await chooseImage();
+      const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
       setImage(chosen);
       setResult('');
@@ -135,7 +135,7 @@ export default function RemoveBg() {
       setSegmenting(true);
       setNote('AI 抠图中，复杂背景也能自动去除…');
       try {
-        const res = await post<{ dataUrl: string }>('/api/segment', {
+        const res = await post<{ dataUrl: string }>('/api/mp/segment', {
           imageBase64: chosen.dataUrl,
         });
         const segPath = await dataUrlToTempFile(res.dataUrl);

@@ -48,7 +48,7 @@ export default function Similar() {
 
   const pickImage = async () => {
     try {
-      const chosen = await chooseImage();
+      const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
       setImage(chosen);
       setWidth(String(chosen.width));
@@ -80,7 +80,7 @@ export default function Similar() {
     setResults([]);
     Taro.showLoading({ title: '生成中，请稍候…', mask: true });
     try {
-      const data = await post<SimilarResponse>('/api/similar', {
+      const data = await post<SimilarResponse>('/api/mp/similar', {
         imageBase64: image.dataUrl,
         width: w,
         height: h,
