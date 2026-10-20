@@ -263,18 +263,23 @@ export function makeIdPhoto(
 
   const bbox = getSubjectBBox(subjectCanvas);
   if (bbox.w <= 0 || bbox.h <= 0) {
-    ctx.drawImage(subjectCanvas, 0, 0, outW, outH);
+    // 兜底：contain 等比居中，绝不拉伸变形
+    const s = Math.min(outW / subjectCanvas.width, outH / subjectCanvas.height);
+    const w = subjectCanvas.width * s;
+    const h = subjectCanvas.height * s;
+    ctx.drawImage(subjectCanvas, (outW - w) / 2, (outH - h) / 2, w, h);
     return out;
   }
 
-  // 证件照构图：整图等比缩放，人像约占 82%，头顶留白 10%，水平居中
+  // 证件照构图：整图等比缩放，人像约占 82%，水平居中；
+  // 人物底部贴照片底边（微超 1%，胸口自然裁切），头顶留白自然形成，避免底部悬空
   // 注意：subjectCanvas 是整图尺寸，必须整图 × scale 绘制，用 bbox 坐标锚定位置
   const cx = bbox.x + bbox.w / 2;
   const scale = Math.max(outW / bbox.w, outH / bbox.h) * 0.82;
   const dw = subjectCanvas.width * scale;
   const dh = subjectCanvas.height * scale;
   const dx = outW / 2 - cx * scale;
-  const dy = outH * 0.1 - bbox.y * scale;
+  const dy = outH * 1.01 - (bbox.y + bbox.h) * scale;
   ctx.drawImage(subjectCanvas, dx, dy, dw, dh);
   return out;
 }
