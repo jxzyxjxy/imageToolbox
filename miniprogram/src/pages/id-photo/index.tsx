@@ -107,13 +107,14 @@ export default function IdPhoto() {
         octx.fillRect(0, 0, sp.w, sp.h);
 
         if (bbox.w > 0 && bbox.h > 0) {
-          // 证件照构图：整图等比缩放，人像约占 82%，头顶留白 10%，水平居中
+          // 证件照构图：整图等比缩放，人像约占 82%，水平居中；
+          // 人物底部贴照片底边（微超 1%，胸口自然裁切），头顶留白自然形成，避免底部悬空
           const cx = bbox.x + bbox.w / 2;
           const scale = Math.max(sp.w / bbox.w, sp.h / bbox.h) * 0.82;
           const dw = size.w * scale;
           const dh = size.h * scale;
           const dx = sp.w / 2 - cx * scale;
-          const dy = sp.h * 0.1 - bbox.y * scale;
+          const dy = sp.h * 1.01 - (bbox.y + bbox.h) * scale;
           octx.drawImage(subject as unknown as never, dx, dy, dw, dh);
         } else {
           // 兜底：contain 等比适配，绝不拉伸变形
