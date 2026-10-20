@@ -10,6 +10,7 @@ import {
   loadImage,
   drawToCanvas,
   removeBackground,
+  getSubjectBBox,
   canvasToBlob,
   downloadBlob,
 } from '@/lib/image-processing';
@@ -39,6 +40,8 @@ export default function RemoveBgClient() {
   const [analyzing, setAnalyzing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  const [aiSubject, setAiSubject] = useState<HTMLCanvasElement | null>(null);
+  const [segmenting, setSegmenting] = useState(false);
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,6 +53,27 @@ export default function RemoveBgClient() {
     setResultUrl(null);
     setNote('');
     setRefColor(sampleCornerColor(canvas));
+    setAiSubject(null);
+
+    // 优先：服务端 AI 主体分割（发丝级，适配复杂背景）
+    setSegmenting(true);
+    try {
+      const res = await fetch('/api/segment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/jpeg', 0.9) }),
+      });
+      const data = (await res.json()) as { dataUrl?: string; error?: string };
+      if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
+      const segImg = await loadImage(data.dataUrl);
+      setAiSubject(drawToCanvas(segImg, 1280));
+      setNote('AI 已自动去除背景，可直接保存');
+    } catch {
+      setAiSubject(null);
+      setNote('AI 抠图不可用，已切换本地模式，可识别背景色或手动取色微调');
+    } finally {
+      setSegmenting(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -105,7 +129,7 @@ export default function RemoveBgClient() {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       try {
-        const { canvas } = removeBackground(sourceCanvas, refColor, tolerance);
+        const canvas = aiSubject ?? removeBackground(sourceCanvas, refColor, tolerance).canvas;
         setResultUrl(canvas.toDataURL('image/png'));
       } catch (e) {
         console.error(e);
@@ -116,7 +140,7 @@ export default function RemoveBgClient() {
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [sourceCanvas, refColor, tolerance]);
+  }, [sourceCanvas, aiSubject, refColor, tolerance]);
 
   const reset = useCallback(() => {
     setSourceCanvas(null);
@@ -124,11 +148,15 @@ export default function RemoveBgClient() {
     setNote('');
     setTolerance(16);
     setPicking(false);
+    setAiSubject(null);
   }, []);
 
   const handleDownload = useCallback(async () => {
     if (!sourceCanvas) return;
-    const { canvas, bbox } = removeBackground(sourceCanvas, refColor, tolerance);
+    const { canvas, bbox } = aiSubject
+      ? { canvas: aiSubject, bbox: getSubjectBBox(aiSubject) }
+      : removeBackground(sourceCanvas, refColor, tolerance);
+    if (bbox.w === 0 || bbox.h === 0) return;
     const cropped = document.createElement('canvas');
     cropped.width = bbox.w;
     cropped.height = bbox.h;
@@ -137,7 +165,7 @@ export default function RemoveBgClient() {
       .drawImage(canvas, bbox.x, bbox.y, bbox.w, bbox.h, 0, 0, bbox.w, bbox.h);
     const blob = await canvasToBlob(cropped, 'image/png');
     downloadBlob(blob, 'background-removed.png');
-  }, [sourceCanvas, refColor, tolerance]);
+  }, [sourceCanvas, aiSubject, refColor, tolerance]);
 
   return (
     <div className="flex flex-1 flex-col pb-28">
@@ -156,6 +184,18 @@ export default function RemoveBgClient() {
 
             {/* 控制面板 */}
             <div className="rounded-[24px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
+              {segmenting ? (
+                <div className="flex h-12 items-center justify-center gap-2 text-sm font-semibold text-indigo-500">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-500" />
+                  AI 抠图中，发丝级分割需要几秒钟…
+                </div>
+              ) : aiSubject ? (
+                <div className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-50 text-sm font-semibold text-emerald-600">
+                  <Sparkles className="h-4 w-4" />
+                  AI 已自动去除背景（复杂背景也适用）
+                </div>
+              ) : (
+                <>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={runAi}
@@ -200,6 +240,8 @@ export default function RemoveBgClient() {
                   当前参考色 RGB({refColor[0]}, {refColor[1]}, {refColor[2]})
                 </p>
               </div>
+                </>
+              )}
 
               {note && <p className="mt-3 text-xs font-medium text-indigo-600">{note}</p>}
             </div>
