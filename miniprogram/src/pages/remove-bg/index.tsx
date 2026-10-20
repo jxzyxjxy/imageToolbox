@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Canvas, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { post } from '../../api/client';
-import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
+import {
+  chooseImage,
+  dataUrlToTempFile,
+  saveToAlbum,
+  ChosenImage,
+} from '../../utils/image';
 import {
   canvasToTempFile,
   fitSize,
@@ -46,10 +51,18 @@ export default function RemoveBg() {
   const [result, setResult] = useState('');
   const [busy, setBusy] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  // AI 分割结果（透明背景临时文件），存在时跳过本地泛洪抠图
+  const [aiSeg, setAiSeg] = useState<string | null>(null);
+  const [segmenting, setSegmenting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runCutout = useCallback(
-    async (img: ChosenImage, ref: [number, number, number], tol: number) => {
+    async (
+      img: ChosenImage,
+      ref: [number, number, number],
+      tol: number,
+      seg: string | null = null,
+    ) => {
       setBusy(true);
       try {
         const size = fitSize(img.width, img.height, PROC_MAX_DIM);
@@ -57,13 +70,15 @@ export default function RemoveBg() {
         canvas.width = size.w;
         canvas.height = size.h;
         const ctx = canvas.getContext('2d');
-        const bitmap = await loadCanvasImage(canvas, img.filePath);
+        const bitmap = await loadCanvasImage(canvas, seg || img.filePath);
         ctx.clearRect(0, 0, size.w, size.h);
         ctx.drawImage(bitmap as unknown as never, 0, 0, size.w, size.h);
 
-        const imageData = ctx.getImageData(0, 0, size.w, size.h);
-        removeBackgroundPixels(imageData.data, size.w, size.h, ref, tol);
-        ctx.putImageData(imageData, 0, 0);
+        if (!seg) {
+          const imageData = ctx.getImageData(0, 0, size.w, size.h);
+          removeBackgroundPixels(imageData.data, size.w, size.h, ref, tol);
+          ctx.putImageData(imageData, 0, 0);
+        }
 
         const path = await canvasToTempFile(canvas, { fileType: 'png' });
         setResult(path);
@@ -113,7 +128,28 @@ export default function RemoveBg() {
       setImage(chosen);
       setResult('');
       setTolerance(16);
-      // 先本地采样立即出图，再异步 AI 增强
+      setNote('');
+      setAiSeg(null);
+
+      // 1. 优先：服务端 AI 主体分割（发丝级，适配复杂背景）
+      setSegmenting(true);
+      setNote('AI 抠图中，复杂背景也能自动去除…');
+      try {
+        const res = await post<{ dataUrl: string }>('/api/segment', {
+          imageBase64: chosen.dataUrl,
+        });
+        const segPath = await dataUrlToTempFile(res.dataUrl);
+        setAiSeg(segPath);
+        setSegmenting(false);
+        setNote('AI 已自动去除背景，可直接保存');
+        await runCutout(chosen, refColor, 16, segPath);
+        return;
+      } catch {
+        setSegmenting(false);
+        setNote('AI 抠图不可用，已切换本地模式');
+      }
+
+      // 2. 兜底：本地采样立即出图，再异步 AI 背景色增强
       const localBg = await sampleLocalCorner(chosen);
       setRefColor(localBg);
       await runCutout(chosen, localBg, 16);
@@ -129,13 +165,13 @@ export default function RemoveBg() {
     if (!image) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      runCutout(image, refColor, tolerance);
+      runCutout(image, refColor, tolerance, aiSeg);
     }, 350);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tolerance]);
+  }, [tolerance, aiSeg]);
 
   return (
     <View className="page">
@@ -162,12 +198,13 @@ export default function RemoveBg() {
             <Text className="pick__hint">点击选择图片</Text>
           </View>
         )}
-        {analyzing && <Text className="card__tip">AI 正在分析背景色…</Text>}
-        {!!note && !analyzing && <Text className="card__tip">{note}</Text>}
+        {segmenting && <Text className="card__tip">AI 抠图中，发丝级分割需要几秒钟…</Text>}
+        {analyzing && !segmenting && <Text className="card__tip">AI 正在分析背景色…</Text>}
+        {!!note && !segmenting && !analyzing && <Text className="card__tip">{note}</Text>}
       </View>
 
-      {/* 容差 */}
-      {image && (
+      {/* 容差（AI 抠图模式下无需调节） */}
+      {image && !aiSeg && (
         <View className="card">
           <View className="card__label-row">
             <Text className="card__label">抠图容差</Text>

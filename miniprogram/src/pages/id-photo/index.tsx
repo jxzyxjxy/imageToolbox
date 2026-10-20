@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Canvas, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { post } from '../../api/client';
-import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
+import {
+  chooseImage,
+  dataUrlToTempFile,
+  saveToAlbum,
+  ChosenImage,
+} from '../../utils/image';
 import {
   canvasToTempFile,
   fitSize,
@@ -73,6 +78,9 @@ export default function IdPhoto() {
   const [busy, setBusy] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [note, setNote] = useState('');
+  // AI 分割结果（透明背景人像临时文件），存在时跳过本地泛洪抠图
+  const [aiSeg, setAiSeg] = useState<string | null>(null);
+  const [segmenting, setSegmenting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const generate = useCallback(
@@ -82,20 +90,23 @@ export default function IdPhoto() {
       tol: number,
       bg: string,
       sp: IdSpec,
+      seg: string | null,
     ) => {
       setBusy(true);
       try {
-        // 1. 处理副本上泛洪抠图
+        // 1. 得到透明人像画布：AI 分割结果 或 本地泛洪抠图
         const size = fitSize(img.width, img.height, PROC_MAX_DIM);
         const subject = await getCanvas('idp-subject');
         subject.width = size.w;
         subject.height = size.h;
         const sctx = subject.getContext('2d');
-        const bitmap = await loadCanvasImage(subject, img.filePath);
+        const bitmap = await loadCanvasImage(subject, seg || img.filePath);
         sctx.clearRect(0, 0, size.w, size.h);
         sctx.drawImage(bitmap as unknown as never, 0, 0, size.w, size.h);
         const imageData = sctx.getImageData(0, 0, size.w, size.h);
-        const bbox = removeBackgroundPixels(imageData.data, size.w, size.h, ref, tol);
+        const bbox = seg
+          ? getSubjectBBoxFromData(imageData.data, size.w, size.h)
+          : removeBackgroundPixels(imageData.data, size.w, size.h, ref, tol);
         sctx.putImageData(imageData, 0, 0);
 
         // 2. 合成证件照（人像 82% + 头顶留白 10%，与 H5 一致）
@@ -150,13 +161,32 @@ export default function IdPhoto() {
       setResult('');
       setTolerance(16);
       setNote('');
+      setAiSeg(null);
 
-      // 1. 先本地采样四角背景色（可靠，不依赖任何 AI）
-      let bg = await sampleLocalCorner(chosen);
+      // 1. 优先：服务端 AI 人像分割（发丝级，适配复杂背景）
+      setSegmenting(true);
+      setNote('AI 抠图中，复杂背景也能自动去除…');
+      try {
+        const res = await post<{ dataUrl: string }>('/api/segment', {
+          imageBase64: chosen.dataUrl,
+        });
+        const segPath = await dataUrlToTempFile(res.dataUrl);
+        setAiSeg(segPath);
+        setSegmenting(false);
+        setNote('AI 已自动去除背景，直接选背景色与规格即可');
+        await generate(chosen, refColor, 16, bgColor, spec, segPath);
+        return;
+      } catch {
+        setSegmenting(false);
+        setNote('AI 抠图不可用，已切换本地抠图模式');
+      }
+
+      // 2. 兜底：本地采样四角背景色 + 泛洪抠图
+      const bg = await sampleLocalCorner(chosen);
       setRefColor(bg);
-      await generate(chosen, bg, 16, bgColor, spec);
+      await generate(chosen, bg, 16, bgColor, spec, null);
 
-      // 2. 再尝试 AI 增强分析，仅在高置信度时覆盖本地采样
+      // 3. AI 背景色增强，仅高置信度覆盖
       setAnalyzing(true);
       try {
         const res = await post<AnalyzeResponse>('/api/analyze', {
@@ -167,14 +197,11 @@ export default function IdPhoto() {
           res.bg.length === 3 &&
           (res.confidence === undefined || res.confidence >= 0.6)
         ) {
-          bg = res.bg;
-          setRefColor(bg);
+          setRefColor(res.bg);
           setNote('AI 已识别背景色');
-        } else {
-          setNote('已使用照片背景色，可拖动容差优化抠图');
         }
       } catch {
-        setNote('AI 分析暂不可用，已使用照片背景色，可调容差优化');
+        /* 本地模式已可用，忽略 */
       } finally {
         setAnalyzing(false);
       }
@@ -188,13 +215,13 @@ export default function IdPhoto() {
     if (!image) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      generate(image, refColor, tolerance, bgColor, spec);
+      generate(image, refColor, tolerance, bgColor, spec, aiSeg);
     }, 350);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tolerance, bgColor, spec]);
+  }, [tolerance, bgColor, spec, aiSeg]);
 
   return (
     <View className="page">
@@ -221,8 +248,9 @@ export default function IdPhoto() {
             <Text className="pick__hint">点击选择半身照片</Text>
           </View>
         )}
-        {analyzing && <Text className="card__tip">AI 正在分析背景…</Text>}
-        {!!note && !analyzing && <Text className="card__tip">{note}</Text>}
+        {segmenting && <Text className="card__tip">AI 抠图中，发丝级分割需要几秒钟…</Text>}
+        {analyzing && !segmenting && <Text className="card__tip">AI 正在分析背景…</Text>}
+        {!!note && !segmenting && !analyzing && <Text className="card__tip">{note}</Text>}
       </View>
 
       {image && (
@@ -261,22 +289,24 @@ export default function IdPhoto() {
             </View>
           </View>
 
-          {/* 容差 */}
-          <View className="card">
-            <View className="card__label-row">
-              <Text className="card__label">抠图容差</Text>
-              <Text className="card__value">{tolerance}</Text>
+          {/* 容差（AI 抠图模式下无需调节） */}
+          {!aiSeg && (
+            <View className="card">
+              <View className="card__label-row">
+                <Text className="card__label">抠图容差</Text>
+                <Text className="card__value">{tolerance}</Text>
+              </View>
+              <Slider
+                min={2}
+                max={60}
+                step={1}
+                value={tolerance}
+                activeColor="#0ea5e9"
+                onChange={(e) => setTolerance(e.detail.value)}
+              />
+              <Text className="card__tip">背景残留就调大，头发/衣服被误删就调小</Text>
             </View>
-            <Slider
-              min={2}
-              max={60}
-              step={1}
-              value={tolerance}
-              activeColor="#0ea5e9"
-              onChange={(e) => setTolerance(e.detail.value)}
-            />
-            <Text className="card__tip">背景残留就调大，头发/衣服被误删就调小</Text>
-          </View>
+          )}
         </>
       )}
 

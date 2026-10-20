@@ -68,6 +68,8 @@ export default function IdPhotoClient() {
   const [analyzing, setAnalyzing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  const [aiSubject, setAiSubject] = useState<HTMLCanvasElement | null>(null);
+  const [segmenting, setSegmenting] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFile = useCallback(async (file: File) => {
@@ -78,6 +80,27 @@ export default function IdPhotoClient() {
     setResultUrl(null);
     setNote('');
     setRefColor(sampleCornerColor(canvas));
+    setAiSubject(null);
+
+    // 优先：服务端 AI 人像分割（像素级抠图，适配复杂背景）
+    setSegmenting(true);
+    try {
+      const res = await fetch('/api/segment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/jpeg', 0.9) }),
+      });
+      const data = (await res.json()) as { dataUrl?: string; error?: string };
+      if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
+      const segImg = await loadImage(data.dataUrl);
+      setAiSubject(drawToCanvas(segImg, 2048));
+      setNote('AI 已自动去除背景，直接选背景色与规格即可');
+    } catch {
+      setAiSubject(null);
+      setNote('AI 抠图不可用，已切换本地抠图模式，可识别背景色或调节容差');
+    } finally {
+      setSegmenting(false);
+    }
   }, []);
 
   const runAi = useCallback(async () => {
@@ -106,7 +129,7 @@ export default function IdPhotoClient() {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       try {
-        const { canvas: subject } = removeBackground(sourceCanvas, refColor, tolerance);
+        const subject = aiSubject ?? removeBackground(sourceCanvas, refColor, tolerance).canvas;
         const out = makeIdPhoto(subject, bgColor, spec.w, spec.h);
         setResultUrl(out.toDataURL('image/jpeg', 0.92));
         const blob = await canvasToBlob(out, 'image/jpeg', 0.92);
@@ -120,7 +143,7 @@ export default function IdPhotoClient() {
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [sourceCanvas, refColor, tolerance, bgColor, spec]);
+  }, [sourceCanvas, aiSubject, refColor, tolerance, bgColor, spec]);
 
   const reset = useCallback(() => {
     setSourceCanvas(null);
@@ -129,15 +152,16 @@ export default function IdPhotoClient() {
     setTolerance(16);
     setBgColor('#2d6bb3');
     setSpec(SPECS[0]);
+    setAiSubject(null);
   }, []);
 
   const handleDownload = useCallback(async () => {
     if (!sourceCanvas) return;
-    const { canvas: subject } = removeBackground(sourceCanvas, refColor, tolerance);
+    const subject = aiSubject ?? removeBackground(sourceCanvas, refColor, tolerance).canvas;
     const out = makeIdPhoto(subject, bgColor, spec.w, spec.h);
     const blob = await canvasToBlob(out, 'image/jpeg', 0.92);
     downloadBlob(blob, `证件照-${spec.name}-${spec.w}x${spec.h}.jpg`);
-  }, [sourceCanvas, refColor, tolerance, bgColor, spec]);
+  }, [sourceCanvas, aiSubject, refColor, tolerance, bgColor, spec]);
 
   return (
     <div className="flex flex-1 flex-col pb-28">
@@ -203,34 +227,48 @@ export default function IdPhotoClient() {
               </div>
             </div>
 
-            {/* AI 识别 + 容差 */}
+            {/* AI 抠图状态 / 本地模式 */}
             <div className="rounded-[24px] bg-white p-5 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">
-              <button
-                onClick={runAi}
-                disabled={analyzing}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#a855f7] text-sm font-semibold text-white shadow-[0_8px_18px_rgba(99,102,241,0.32)] transition-transform active:scale-[0.98] disabled:opacity-60"
-              >
-                {analyzing ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                AI 智能识别背景
-              </button>
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="font-semibold text-[#1e293b]">容差（灵敏度）</span>
-                  <span className="font-semibold text-[#6366f1]">{tolerance}</span>
+              {segmenting ? (
+                <div className="flex h-12 items-center justify-center gap-2 text-sm font-semibold text-indigo-500">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-500" />
+                  AI 抠图中，发丝级分割需要几秒钟…
                 </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={100}
-                  value={tolerance}
-                  onChange={(e) => setTolerance(Number(e.target.value))}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-indigo-500"
-                />
-              </div>
+              ) : aiSubject ? (
+                <div className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-50 text-sm font-semibold text-emerald-600">
+                  <Sparkles className="h-4 w-4" />
+                  AI 已自动去除背景（复杂背景也适用）
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={runAi}
+                    disabled={analyzing}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#a855f7] text-sm font-semibold text-white shadow-[0_8px_18px_rgba(99,102,241,0.32)] transition-transform active:scale-[0.98] disabled:opacity-60"
+                  >
+                    {analyzing ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    AI 智能识别背景
+                  </button>
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-semibold text-[#1e293b]">容差（灵敏度）</span>
+                      <span className="font-semibold text-[#6366f1]">{tolerance}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={100}
+                      value={tolerance}
+                      onChange={(e) => setTolerance(Number(e.target.value))}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-indigo-500"
+                    />
+                  </div>
+                </>
+              )}
               {note && (
                 <div className="mt-3 rounded-xl bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-600">
                   {note}

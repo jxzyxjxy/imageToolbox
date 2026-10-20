@@ -55,6 +55,8 @@ const eslintConfig = defineConfig([
     // Build artifacts:
     'server.js',
     'dist/',
+    // 微信小程序子项目（独立构建与 lint 体系）
+    'miniprogram/',
     // Script files (CommonJS):
     'scripts/**/*.js',
   ]),
