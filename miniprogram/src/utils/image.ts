@@ -8,6 +8,8 @@ export interface ChosenImage {
   height: number;
   /** 字节数 */
   size: number;
+  /** 原图 MIME（透明 PNG 必须保留，不能被转成 JPEG 黑底） */
+  mime: string;
 }
 
 export interface ChooseImageOptions {
@@ -74,6 +76,7 @@ export async function chooseImage(
     width: info.width,
     height: info.height,
     size: res.tempFiles?.[0]?.size ?? 0,
+    mime,
   };
 }
 

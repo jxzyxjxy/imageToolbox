@@ -61,7 +61,8 @@ export default function RemoveBgClient() {
       const res = await fetch('/api/segment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/jpeg', 0.9) }),
+        // 必须 PNG：canvas 默认透明底，转 JPEG 会把透明区压成黑色
+        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
       });
       const data = (await res.json()) as { dataUrl?: string; error?: string };
       if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
