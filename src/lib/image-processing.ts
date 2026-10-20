@@ -267,15 +267,14 @@ export function makeIdPhoto(
     return out;
   }
 
-  // cover 适配：主体占满画布，人脸向上（顶部留留白靠重心上移）
+  // 证件照构图：整图等比缩放，人像约占 82%，头顶留白 10%，水平居中
+  // 注意：subjectCanvas 是整图尺寸，必须整图 × scale 绘制，用 bbox 坐标锚定位置
   const cx = bbox.x + bbox.w / 2;
-  const cy = bbox.y + bbox.h / 2;
-  const scale = Math.max(outW / bbox.w, outH / bbox.h);
-  const dw = bbox.w * scale;
-  const dh = bbox.h * scale;
-  // 以 bbox 中心为锚，整体略上移 4%，让人脸更接近顶部，更符合证件照构图
-  const dx = outW / 2 - (cx - bbox.x) * scale;
-  const dy = outH / 2 - (cy - bbox.y) * scale - outH * 0.04;
+  const scale = Math.max(outW / bbox.w, outH / bbox.h) * 0.82;
+  const dw = subjectCanvas.width * scale;
+  const dh = subjectCanvas.height * scale;
+  const dx = outW / 2 - cx * scale;
+  const dy = outH * 0.1 - bbox.y * scale;
   ctx.drawImage(subjectCanvas, dx, dy, dw, dh);
   return out;
 }
