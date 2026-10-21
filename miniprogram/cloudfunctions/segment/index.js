@@ -1,16 +1,30 @@
 /**
- * AI 主体分割（火山引擎视觉智能·人像分割）：证件照/智能抠图共用。
+ * AI 主体分割：证件照/智能抠图共用。
+ * 通道选择：腾讯云人体分析（TC_SECRET_ID/TC_SECRET_KEY，推荐，每月 1000 次免费）
+ *   优先；未配置时回落火山视觉智能（VOLC_ACCESS_KEY/VOLC_SECRET_KEY，老接口）。
  * event: { fileID }
- * 返回: { fileID, width, height, remaining, limit, error?, code? }
+ * 返回: { fileID, width, height, remaining, limit, provider, error?, code? }
  *   code = SEGMENT_UNAVAILABLE（未配置凭证）/ SEGMENT_FAILED（调用失败）→ 前端回落本地泛洪抠图
  */
 const cloud = require('wx-server-sdk');
 const { consume } = require('./lib/limit');
 const storage = require('./lib/storage');
-const { humanSegment } = require('./lib/volc');
+const tencent = require('./lib/tencent');
+const volc = require('./lib/volc');
 const pixels = require('./lib/pixels');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+
+/** 选择可用的分割通道：腾讯云优先，火山兜底 */
+function pickSegmentProvider() {
+  if (process.env.TC_SECRET_ID && process.env.TC_SECRET_KEY) {
+    return { name: 'tencent-bda', humanSegment: tencent.humanSegment };
+  }
+  if (process.env.VOLC_ACCESS_KEY && process.env.VOLC_SECRET_KEY) {
+    return { name: 'volc-cv', humanSegment: volc.humanSegment };
+  }
+  return null;
+}
 
 /** 只有 mask（灰度图）时：把 mask 缩放到源图尺寸，作为 alpha 合成 */
 function applyMask(srcImg, maskImg) {
@@ -51,6 +65,15 @@ exports.main = async (event) => {
     return { error: '缺少图片文件' };
   }
 
+  // 通道选择（腾讯云优先，火山兜底；都未配置则返回不可用，前端回落本地抠图）
+  const provider = pickSegmentProvider();
+  if (!provider) {
+    return {
+      error: '未配置分割服务凭证（TC_SECRET_ID/TC_SECRET_KEY 或 VOLC_ACCESS_KEY/VOLC_SECRET_KEY）',
+      code: 'SEGMENT_UNAVAILABLE',
+    };
+  }
+
   // 每日限频
   const db = cloud.database();
   const quota = await consume(db, OPENID, 'segment');
@@ -66,7 +89,7 @@ exports.main = async (event) => {
     const flat = srcImg.clone().background(0xffffffff);
     const jpeg = await flat.quality(90).getBufferAsync(pixels.Jimp.MIME_JPEG);
 
-    const seg = await humanSegment(jpeg.toString('base64'));
+    const seg = await provider.humanSegment(jpeg.toString('base64'));
 
     let outImg;
     if (seg.image) {
@@ -92,6 +115,7 @@ exports.main = async (event) => {
       fileID: resultFileID,
       width: sw,
       height: sh,
+      provider: provider.name,
       remaining: quota.remaining,
       limit: quota.limit,
     };
