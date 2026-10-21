@@ -111,8 +111,10 @@ exports.main = async (event) => {
     const raw = await storage.download(cloud, fileID);
     await secCheck(raw);
 
-    // 3) 参考图（长边 ≤2048 JPEG data URL）
-    const imageDataUrl = await pixels.toReferenceDataUrl(raw);
+    // 3) 参考图（长边 ≤2048 JPEG data URL；透明区铺白底，避免 JPEG 黑底污染生成）
+    const srcImg = await pixels.readLimited(raw, 2048);
+    const srcHasAlpha = pixels.hasTransparent(srcImg);
+    const imageDataUrl = await pixels.toReferenceDataUrl(srcImg);
 
     // 4) 尺寸与引导词
     const transparent = tool === 'similar' && event.transparent === true;
@@ -153,7 +155,10 @@ exports.main = async (event) => {
       return { error: firstErr || '生成失败，请重试' };
     }
 
-    // 6) 透明模式抠白底 + 全部上传云存储
+    // 6) 结果后处理 + 全部上传云存储
+    // - 相似图透明模式：抠白底输出 PNG
+    // - 编辑类（消除/去水印/修复）：源图带透明区时做 alpha 交集，还原透明背景
+    const keepAlpha = !transparent && tool !== 'similar' && srcHasAlpha;
     const results = [];
     for (const buf of buffers) {
       let out = buf;
@@ -170,6 +175,17 @@ exports.main = async (event) => {
         } catch (e) {
           console.warn('[generate] 透明抠图失败，退回原图:', e && e.message);
         }
+      } else if (keepAlpha) {
+        try {
+          const img = await pixels.readLimited(buf, 4096);
+          pixels.intersectAlpha(img, srcImg);
+          out = await img.getBufferAsync(pixels.Jimp.MIME_PNG);
+          width = img.bitmap.width;
+          height = img.bitmap.height;
+          ext = 'png';
+        } catch (e) {
+          console.warn('[generate] 透明区还原失败，退回原图:', e && e.message);
+        }
       }
       const id = await storage.upload(cloud, OPENID, out, ext);
       results.push({ fileID: id, width, height });
@@ -180,7 +196,7 @@ exports.main = async (event) => {
       remaining: quota.remaining,
       limit: quota.limit,
       size,
-      format: transparent ? 'png' : 'jpg',
+      format: transparent || keepAlpha ? 'png' : 'jpg',
     };
   } catch (err) {
     console.error('[generate] 失败:', err);

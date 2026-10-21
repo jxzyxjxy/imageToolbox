@@ -15,19 +15,6 @@ async function readLimited(buffer, maxSide = 1600) {
   return img;
 }
 
-/** 转方舟参考图 data URL（JPEG，长边 ≤2048，q85） */
-async function toReferenceDataUrl(buffer) {
-  const img = await readLimited(buffer, 2048);
-  const out = await img.quality(85).getBufferAsync(Jimp.MIME_JPEG);
-  return 'data:image/jpeg;base64,' + out.toString('base64');
-}
-
-/** 压缩出内容安全送检小图（JPEG Buffer） */
-async function toSecCheckBuffer(buffer) {
-  const img = await readLimited(buffer, 480);
-  return img.quality(60).getBufferAsync(Jimp.MIME_JPEG);
-}
-
 /** 判断图像是否含真实透明像素 */
 function hasTransparent(img) {
   const { data } = img.bitmap;
@@ -35,6 +22,43 @@ function hasTransparent(img) {
     if (data[i] < 250) return true;
   }
   return false;
+}
+
+/**
+ * 转方舟参考图 data URL（JPEG，长边 ≤2048，q85）。
+ * JPEG 不支持透明：透明区必须先铺白底，否则会渲染成黑底污染生成结果。
+ * 入参可为 Buffer 或已解码的 jimp 图像（避免重复解码）。
+ */
+async function toReferenceDataUrl(imgOrBuffer) {
+  const img = Buffer.isBuffer(imgOrBuffer) ? await readLimited(imgOrBuffer, 2048) : imgOrBuffer;
+  const flat = hasTransparent(img) ? img.clone().background(0xffffffff) : img;
+  const out = await flat.quality(85).getBufferAsync(Jimp.MIME_JPEG);
+  return 'data:image/jpeg;base64,' + out.toString('base64');
+}
+
+/**
+ * 结果图与源图 alpha 取交集：源图本就透明的区域在结果上保持透明。
+ * 用于编辑类工具（消除/去水印/修复）——AI 输出整图不透明，需把原图透明区还原。
+ */
+function intersectAlpha(outImg, srcImg) {
+  const { width: w, height: h } = outImg.bitmap;
+  const srcA = srcImg.clone().resize(w, h, Jimp.RESIZE_BILINEAR);
+  const out = outImg.bitmap.data;
+  const sa = srcA.bitmap.data;
+  for (let i = 0; i < w * h; i++) {
+    const aSrc = sa[i * 4 + 3];
+    if (aSrc < 250) {
+      const o = i * 4 + 3;
+      out[o] = Math.min(out[o], aSrc);
+    }
+  }
+  return outImg;
+}
+
+/** 压缩出内容安全送检小图（JPEG Buffer） */
+async function toSecCheckBuffer(buffer) {
+  const img = await readLimited(buffer, 480);
+  return img.quality(60).getBufferAsync(Jimp.MIME_JPEG);
 }
 
 /**
@@ -201,6 +225,7 @@ module.exports = {
   toReferenceDataUrl,
   toSecCheckBuffer,
   hasTransparent,
+  intersectAlpha,
   removeWhiteBackground,
   makeBgTransparent,
   alphaBBox,
