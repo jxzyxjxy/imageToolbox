@@ -1,0 +1,10 @@
+{
+  "name": "segment",
+  "version": "1.0.0",
+  "description": "AI 主体分割（火山引擎视觉智能·人像分割）：证件照/智能抠图共用",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3",
+    "jimp": "0.16.13"
+  }
+}

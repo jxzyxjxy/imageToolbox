@@ -1,14 +1,9 @@
 import { useState } from 'react';
 import { View, Text, Image, Input, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { post } from '../../api/client';
-import {
-  chooseImage,
-  dataUrlToTempFile,
-  saveToAlbum,
-  formatSize,
-  ChosenImage,
-} from '../../utils/image';
+import { generateSimilar } from '../../api/client';
+import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
+import { chooseImage, saveToAlbum, formatSize, ChosenImage } from '../../utils/image';
 import './index.scss';
 
 type ModelKey = 'seedream4' | 'seedream5flash';
@@ -25,13 +20,9 @@ const BG_OPTIONS = [
 
 const COUNTS = [1, 2, 4];
 
-interface SimilarResponse {
-  imageUrls?: string[];
-  format?: string;
-}
-
-interface FetchImageResponse {
-  dataUrl?: string;
+interface ResultItem {
+  fileID: string;
+  url: string;
 }
 
 export default function Similar() {
@@ -43,8 +34,7 @@ export default function Similar() {
   const [similarity, setSimilarity] = useState(70);
   const [count, setCount] = useState(1);
   const [generating, setGenerating] = useState(false);
-  const [results, setResults] = useState<string[]>([]);
-  const [resultFormat, setResultFormat] = useState<'png' | 'jpeg'>('jpeg');
+  const [results, setResults] = useState<ResultItem[]>([]);
 
   const pickImage = async () => {
     try {
@@ -80,8 +70,10 @@ export default function Similar() {
     setResults([]);
     Taro.showLoading({ title: '生成中，请稍候…', mask: true });
     try {
-      const data = await post<SimilarResponse>('/api/mp/similar', {
-        imageBase64: image.dataUrl,
+      // 1) 图片上传云存储（避免 callFunction 1MB 载荷限制）
+      const inputFileID = await uploadImage(image.filePath);
+      // 2) 云函数生图
+      const data = await generateSimilar(inputFileID, {
         width: w,
         height: h,
         similarity,
@@ -89,24 +81,14 @@ export default function Similar() {
         modelKey,
         transparent: bgMode === 'transparent',
       });
-      if (!data.imageUrls?.length) throw new Error('未返回图片');
-      const fmt = data.format === 'png' ? 'png' : 'jpeg';
-      setResultFormat(fmt);
-      const paths: string[] = [];
-      for (const img of data.imageUrls) {
-        // data: 直接写临时文件；远程 URL 走服务端代理转 dataURL（保证可保存相册）
-        let dataUrl = img;
-        if (!img.startsWith('data:')) {
-          const proxy = await post<FetchImageResponse>('/api/fetch-image', {
-            url: img,
-          });
-          if (!proxy.dataUrl) continue;
-          dataUrl = proxy.dataUrl;
-        }
-        paths.push(await dataUrlToTempFile(dataUrl, fmt));
-      }
-      if (paths.length === 0) throw new Error('结果加载失败');
-      setResults(paths);
+      if (!data.results?.length) throw new Error('未返回图片');
+      // 3) fileID 换临时链接用于展示
+      const urlMap = await getTempUrls(data.results.map((r) => r.fileID));
+      const items = data.results
+        .map((r) => ({ fileID: r.fileID, url: urlMap.get(r.fileID) || '' }))
+        .filter((r) => r.url);
+      if (items.length === 0) throw new Error('结果加载失败');
+      setResults(items);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '生成失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
@@ -117,7 +99,21 @@ export default function Similar() {
   };
 
   const previewImage = (current: string) => {
-    Taro.previewImage({ current, urls: results });
+    Taro.previewImage({ current, urls: results.map((r) => r.url) });
+  };
+
+  /** 保存前先下载到本地临时文件（saveImageToPhotosAlbum 不支持远程 URL） */
+  const saveResult = async (item: ResultItem) => {
+    try {
+      Taro.showLoading({ title: '下载中…', mask: true });
+      const path = await downloadTemp(item.fileID);
+      await saveToAlbum(path);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '下载失败';
+      Taro.showToast({ title: msg.slice(0, 20), icon: 'none' });
+    } finally {
+      Taro.hideLoading();
+    }
   };
 
   return (
@@ -258,13 +254,13 @@ export default function Similar() {
               <View key={i} className="results__item">
                 <Image
                   className="results__img"
-                  src={r}
+                  src={r.url}
                   mode="aspectFit"
-                  onClick={() => previewImage(r)}
+                  onClick={() => previewImage(r.url)}
                 />
                 <Button
                   className="results__save"
-                  onClick={() => saveToAlbum(r)}
+                  onClick={() => saveResult(r)}
                 >
                   保存
                 </Button>

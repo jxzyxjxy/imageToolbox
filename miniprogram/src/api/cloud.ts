@@ -1,5 +1,5 @@
 /**
- * 微信云开发封装：登录、工具票据、内容安全检测。
+ * 微信云开发封装：登录、内容安全检测、云存储上传/下载/临时链接。
  * 云函数见 miniprogram/cloudfunctions/ 目录。
  */
 
@@ -9,6 +9,24 @@ interface WxCloud {
     name: string;
     data?: Record<string, unknown>;
     success?: (res: { result: unknown }) => void;
+    fail?: (err: Error) => void;
+  }) => void;
+  uploadFile: (opts: {
+    cloudPath: string;
+    filePath: string;
+    success?: (res: { fileID: string }) => void;
+    fail?: (err: Error) => void;
+  }) => void;
+  downloadFile: (opts: {
+    fileID: string;
+    success?: (res: { tempFilePath: string }) => void;
+    fail?: (err: Error) => void;
+  }) => void;
+  getTempFileURL: (opts: {
+    fileList: string[];
+    success?: (res: {
+      fileList: { fileID: string; tempFileURL: string; status: number }[];
+    }) => void;
     fail?: (err: Error) => void;
   }) => void;
 }
@@ -44,22 +62,6 @@ export async function mpLogin(): Promise<void> {
   }
 }
 
-interface TicketResult {
-  ticket?: string;
-  remaining?: number;
-  limit?: number;
-  error?: string;
-}
-
-/** 向云函数申请指定工具的调用票据（云函数侧完成每日限频） */
-export async function fetchTicket(tool: string): Promise<TicketResult> {
-  const res = await callCloud<TicketResult>('ticket', { tool });
-  if (!res.ticket) {
-    throw new Error(res.error || '获取调用票据失败');
-  }
-  return res;
-}
-
 interface SecCheckResult {
   pass: boolean;
   error?: string;
@@ -74,4 +76,58 @@ export async function secCheckImage(base64: string): Promise<SecCheckResult> {
     console.warn('[cloud] sec-check 不可用，已放行:', e);
     return { pass: true };
   }
+}
+
+/** 上传本地图片到云存储，返回 fileID（云函数凭 fileID 取图处理） */
+export async function uploadImage(filePath: string): Promise<string> {
+  const cloud = getWxCloud();
+  if (!cloud) {
+    throw new Error('云开发不可用，请检查 appid 与云环境配置');
+  }
+  const ext = (filePath.match(/\.(\w+)$/)?.[1] || 'png').toLowerCase();
+  const cloudPath = `inputs/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  return new Promise<string>((resolve, reject) => {
+    cloud.uploadFile({
+      cloudPath,
+      filePath,
+      success: (res) => resolve(res.fileID),
+      fail: (err) => reject(new Error(err.message || '图片上传失败')),
+    });
+  });
+}
+
+/** 下载云存储文件到本地临时路径（保存相册前调用） */
+export async function downloadTemp(fileID: string): Promise<string> {
+  const cloud = getWxCloud();
+  if (!cloud) {
+    throw new Error('云开发不可用，请检查 appid 与云环境配置');
+  }
+  return new Promise<string>((resolve, reject) => {
+    cloud.downloadFile({
+      fileID,
+      success: (res) => resolve(res.tempFilePath),
+      fail: (err) => reject(new Error(err.message || '结果图下载失败')),
+    });
+  });
+}
+
+/** fileID 批量换临时 HTTPS 链接（Image 组件直接展示用） */
+export async function getTempUrls(fileIDs: string[]): Promise<Map<string, string>> {
+  const cloud = getWxCloud();
+  const map = new Map<string, string>();
+  if (!cloud || fileIDs.length === 0) return map;
+  return new Promise<Map<string, string>>((resolve) => {
+    cloud.getTempFileURL({
+      fileList: fileIDs,
+      success: (res) => {
+        for (const item of res.fileList || []) {
+          if (item.status === 0 && item.tempFileURL) {
+            map.set(item.fileID, item.tempFileURL);
+          }
+        }
+        resolve(map);
+      },
+      fail: () => resolve(map),
+    });
+  });
 }

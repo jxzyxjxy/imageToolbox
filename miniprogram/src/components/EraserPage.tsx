@@ -1,14 +1,9 @@
 import { useRef, useState } from 'react';
 import { View, Text, Image, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { post } from '../api/client';
-import {
-  chooseImage,
-  fileToDataUrl,
-  dataUrlToTempFile,
-  saveToAlbum,
-  ChosenImage,
-} from '../utils/image';
+import { generateEdit } from '../api/client';
+import { uploadImage, getTempUrls, downloadTemp } from '../api/cloud';
+import { chooseImage, saveToAlbum, ChosenImage } from '../utils/image';
 import { BrushCanvas, BrushCanvasHandle } from './BrushCanvas';
 
 interface EraserPageProps {
@@ -21,12 +16,9 @@ interface EraserPageProps {
   hint: string;
 }
 
-interface EditResponse {
-  imageUrl?: string;
-}
-
-interface FetchImageResponse {
-  dataUrl?: string;
+interface ResultItem {
+  fileID: string;
+  url: string;
 }
 
 /** 涂抹消除类工具共用页面（去水印 / 智能消除） */
@@ -41,7 +33,7 @@ export default function EraserPage({
   const [image, setImage] = useState<ChosenImage | null>(null);
   const [brushSize, setBrushSize] = useState(24);
   const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState('');
+  const [result, setResult] = useState<ResultItem | null>(null);
   const brushRef = useRef<BrushCanvasHandle>(null);
 
   const pickImage = async () => {
@@ -49,7 +41,7 @@ export default function EraserPage({
       const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
       setImage(chosen);
-      setResult('');
+      setResult(null);
     } catch (err) {
       console.error(err);
     }
@@ -65,30 +57,40 @@ export default function EraserPage({
       return;
     }
     setProcessing(true);
-    setResult('');
-    Taro.showLoading({ title: 'AI 处理中，约 1 分钟…', mask: true });
+    setResult(null);
+    Taro.showLoading({ title: 'AI 处理中，请稍候…', mask: true });
     try {
       const composed = await brushRef.current.getComposedFile();
       if (!composed) throw new Error('蒙版合成失败');
-      const imageBase64 = fileToDataUrl(composed, 'image/png');
 
-      const data = await post<EditResponse>('/api/mp/image-edit', {
-        imageBase64,
-        mode,
-      });
-      if (!data.imageUrl) throw new Error('未返回图片');
-      const proxy = await post<FetchImageResponse>('/api/fetch-image', {
-        url: data.imageUrl,
-      });
-      if (!proxy.dataUrl) throw new Error('结果加载失败');
-      const path = await dataUrlToTempFile(proxy.dataUrl, 'jpeg');
-      setResult(path);
+      const inputFileID = await uploadImage(composed);
+      const data = await generateEdit(inputFileID, mode);
+      const first = data.results?.[0];
+      if (!first) throw new Error('未返回图片');
+      const urlMap = await getTempUrls([first.fileID]);
+      const url = urlMap.get(first.fileID);
+      if (!url) throw new Error('结果加载失败');
+      setResult({ fileID: first.fileID, url });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '处理失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
     } finally {
       Taro.hideLoading();
       setProcessing(false);
+    }
+  };
+
+  const saveResult = async () => {
+    if (!result) return;
+    try {
+      Taro.showLoading({ title: '下载中…', mask: true });
+      const path = await downloadTemp(result.fileID);
+      await saveToAlbum(path);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '下载失败';
+      Taro.showToast({ title: msg.slice(0, 20), icon: 'none' });
+    } finally {
+      Taro.hideLoading();
     }
   };
 
@@ -159,11 +161,13 @@ export default function EraserPage({
           <Text className="card__label">处理结果</Text>
           <Image
             className="result-img"
-            src={result}
+            src={result.url}
             mode="aspectFit"
-            onClick={() => Taro.previewImage({ current: result, urls: [result] })}
+            onClick={() =>
+              Taro.previewImage({ current: result.url, urls: [result.url] })
+            }
           />
-          <Button className="result__save" onClick={() => saveToAlbum(result)}>
+          <Button className="result__save" onClick={saveResult}>
             保存到相册
           </Button>
         </View>

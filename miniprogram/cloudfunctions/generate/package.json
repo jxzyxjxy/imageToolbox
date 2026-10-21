@@ -1,0 +1,10 @@
+{
+  "name": "generate",
+  "version": "1.0.0",
+  "description": "统一 AI 生图入口（方舟 Seedream）：相似图/去水印/智能消除/老照片修复",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3",
+    "jimp": "0.16.13"
+  }
+}

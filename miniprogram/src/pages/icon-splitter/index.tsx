@@ -1,25 +1,20 @@
 import { useState } from 'react';
 import { View, Text, Image, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { post } from '../../api/client';
-import { chooseImage, dataUrlToTempFile, saveToAlbum, ChosenImage } from '../../utils/image';
+import { splitIcons } from '../../api/client';
+import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
+import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import './index.scss';
 
-interface IconItem {
+interface IconView {
   name: string;
-  dataUrl: string;
+  fileID: string;
+  url: string;
   w: number;
   h: number;
 }
 
-interface SplitResponse {
-  status: string;
-  icons?: IconItem[];
-  sprite?: string;
-  spriteMeta?: { cols: number; rows: number; cellW: number; cellH: number };
-  note?: string;
-  error?: string;
-}
+type SpriteMeta = { cols: number; rows: number; cellW: number; cellH: number };
 
 const SIZES = [64, 128, 256, 512];
 const COLS_OPTS = [
@@ -29,18 +24,14 @@ const COLS_OPTS = [
   { label: '5 列', value: 5 },
 ];
 
-interface IconView extends IconItem {
-  filePath: string;
-}
-
 export default function IconSplitter() {
   const [image, setImage] = useState<ChosenImage | null>(null);
   const [targetSize, setTargetSize] = useState(128);
   const [cols, setCols] = useState(0);
   const [gap, setGap] = useState(0);
   const [icons, setIcons] = useState<IconView[]>([]);
-  const [sprite, setSprite] = useState('');
-  const [spriteMeta, setSpriteMeta] = useState<SplitResponse['spriteMeta']>();
+  const [sprite, setSprite] = useState<{ fileID: string; url: string } | null>(null);
+  const [spriteMeta, setSpriteMeta] = useState<SpriteMeta>();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
@@ -51,7 +42,7 @@ export default function IconSplitter() {
       if (!chosen) return;
       setImage(chosen);
       setIcons([]);
-      setSprite('');
+      setSprite(null);
       setNote('');
     } catch (err) {
       console.error(err);
@@ -62,25 +53,28 @@ export default function IconSplitter() {
     if (!image || busy) return;
     setBusy(true);
     setIcons([]);
-    setSprite('');
+    setSprite(null);
     Taro.showLoading({ title: '正在拆分…', mask: true });
     try {
-      const data = await post<SplitResponse>('/api/split-icons', {
-        imageBase64: image.dataUrl,
-        targetSize,
-        cols,
-        gap,
-      });
+      const inputFileID = await uploadImage(image.filePath);
+      const data = await splitIcons(inputFileID, { targetSize, cols, gap });
       setNote(data.note || '');
       const list = data.icons || [];
-      const views: IconView[] = [];
-      for (const icon of list) {
-        const filePath = await dataUrlToTempFile(icon.dataUrl);
-        views.push({ ...icon, filePath });
-      }
+
+      const fileIDs = list.map((i) => i.fileID);
+      if (data.spriteFileID) fileIDs.push(data.spriteFileID);
+      const urlMap = await getTempUrls(fileIDs);
+
+      const views: IconView[] = list.map((icon) => ({
+        ...icon,
+        url: urlMap.get(icon.fileID) || '',
+      }));
       setIcons(views);
-      if (data.sprite) {
-        setSprite(await dataUrlToTempFile(data.sprite));
+      if (data.spriteFileID) {
+        setSprite({
+          fileID: data.spriteFileID,
+          url: urlMap.get(data.spriteFileID) || '',
+        });
         setSpriteMeta(data.spriteMeta);
       }
       if (!views.length) {
@@ -88,12 +82,32 @@ export default function IconSplitter() {
       }
     } catch (err) {
       Taro.showToast({
-        title: err instanceof Error ? err.message : '拆分失败',
+        title: (err instanceof Error ? err.message : '拆分失败').slice(0, 28),
         icon: 'none',
       });
     } finally {
       Taro.hideLoading();
       setBusy(false);
+    }
+  };
+
+  /** 云端图标需先下载再保存相册 */
+  const saveIcon = async (icon: IconView) => {
+    try {
+      const path = await downloadTemp(icon.fileID);
+      await saveToAlbum(path);
+    } catch {
+      /* 用户取消或失败，saveToAlbum 已提示 */
+    }
+  };
+
+  const saveSprite = async () => {
+    if (!sprite) return;
+    try {
+      const path = await downloadTemp(sprite.fileID);
+      await saveToAlbum(path);
+    } catch {
+      /* 同上 */
     }
   };
 
@@ -103,7 +117,8 @@ export default function IconSplitter() {
     let ok = 0;
     for (const icon of icons) {
       try {
-        await saveToAlbum(icon.filePath);
+        const path = await downloadTemp(icon.fileID);
+        await saveToAlbum(path);
         ok += 1;
       } catch {
         // 用户取消授权则中断
@@ -203,16 +218,16 @@ export default function IconSplitter() {
               <View key={icon.name} className="grid__cell">
                 <Image
                   className="grid__img"
-                  src={icon.filePath}
+                  src={icon.url}
                   mode="aspectFit"
                   onClick={() =>
                     Taro.previewImage({
-                      current: icon.filePath,
-                      urls: icons.map((i) => i.filePath),
+                      current: icon.url,
+                      urls: icons.map((i) => i.url),
                     })
                   }
                 />
-                <Text className="grid__save" onClick={() => saveToAlbum(icon.filePath)}>
+                <Text className="grid__save" onClick={() => saveIcon(icon)}>
                   保存
                 </Text>
               </View>
@@ -232,9 +247,9 @@ export default function IconSplitter() {
               : ''}
           </Text>
           <View className="checker">
-            <Image className="sprite" src={sprite} mode="widthFix" />
+            <Image className="sprite" src={sprite.url} mode="widthFix" />
           </View>
-          <Button className="result__save" onClick={() => saveToAlbum(sprite)}>
+          <Button className="result__save" onClick={saveSprite}>
             保存雪碧图
           </Button>
         </View>

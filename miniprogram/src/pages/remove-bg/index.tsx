@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Canvas, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { post } from '../../api/client';
-import {
-  chooseImage,
-  dataUrlToTempFile,
-  saveToAlbum,
-  ChosenImage,
-} from '../../utils/image';
+import { segmentImage } from '../../api/client';
+import { uploadImage, downloadTemp } from '../../api/cloud';
+import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import {
   canvasToTempFile,
   fitSize,
@@ -20,13 +16,6 @@ import './index.scss';
 
 /** 处理副本最长边（像素级处理，兼顾内存与效果） */
 const PROC_MAX_DIM = 1024;
-
-interface AnalyzeResponse {
-  bg: [number, number, number];
-  uniform: boolean;
-  confidence?: number;
-  note?: string;
-}
 
 /** 本地采样四角平均背景色（不依赖 AI，与证件照页一致） */
 async function sampleLocalCorner(
@@ -50,7 +39,6 @@ export default function RemoveBg() {
   const [note, setNote] = useState('');
   const [result, setResult] = useState('');
   const [busy, setBusy] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   // AI 分割结果（透明背景临时文件），存在时跳过本地泛洪抠图
   const [aiSeg, setAiSeg] = useState<string | null>(null);
   const [segmenting, setSegmenting] = useState(false);
@@ -92,35 +80,6 @@ export default function RemoveBg() {
     [],
   );
 
-  const analyze = useCallback(
-    async (img: ChosenImage) => {
-      setAnalyzing(true);
-      setNote('');
-      try {
-        const res = await post<AnalyzeResponse>('/api/analyze', {
-          imageBase64: img.dataUrl,
-        });
-        // 仅在高置信度时覆盖本地采样；兜底灰色（confidence=0.3）直接忽略
-        if (
-          Array.isArray(res.bg) &&
-          res.bg.length === 3 &&
-          (res.confidence === undefined || res.confidence >= 0.6)
-        ) {
-          setRefColor(res.bg);
-          setNote('AI 已识别背景色');
-          return res.bg;
-        }
-        setNote('已使用照片背景色，可拖动容差优化抠图');
-      } catch {
-        setNote('AI 分析暂不可用，已使用照片背景色，可调容差优化效果');
-      } finally {
-        setAnalyzing(false);
-      }
-      return null;
-    },
-    [],
-  );
-
   const pickImage = async () => {
     try {
       const chosen = await chooseImage({ secCheck: true });
@@ -131,14 +90,14 @@ export default function RemoveBg() {
       setNote('');
       setAiSeg(null);
 
-      // 1. 优先：服务端 AI 主体分割（发丝级，适配复杂背景）
+      // 1. 优先：云函数 AI 主体分割（发丝级，适配复杂背景）
       setSegmenting(true);
       setNote('AI 抠图中，复杂背景也能自动去除…');
       try {
-        const res = await post<{ dataUrl: string }>('/api/mp/segment', {
-          imageBase64: chosen.dataUrl,
-        });
-        const segPath = await dataUrlToTempFile(res.dataUrl);
+        const inputFileID = await uploadImage(chosen.filePath);
+        const res = await segmentImage(inputFileID);
+        if (!res.fileID) throw new Error(res.error || 'AI 抠图失败');
+        const segPath = await downloadTemp(res.fileID);
         setAiSeg(segPath);
         setSegmenting(false);
         setNote('AI 已自动去除背景，可直接保存');
@@ -149,12 +108,11 @@ export default function RemoveBg() {
         setNote('AI 抠图不可用，已切换本地模式');
       }
 
-      // 2. 兜底：本地采样立即出图，再异步 AI 背景色增强
+      // 2. 兜底：本地采样背景色 + 泛洪抠图（适合纯色背景）
       const localBg = await sampleLocalCorner(chosen);
       setRefColor(localBg);
+      setNote('已使用照片背景色，可拖动容差优化抠图');
       await runCutout(chosen, localBg, 16);
-      const aiBg = await analyze(chosen);
-      if (aiBg) await runCutout(chosen, aiBg, 16);
     } catch (err) {
       console.error(err);
     }
@@ -199,8 +157,7 @@ export default function RemoveBg() {
           </View>
         )}
         {segmenting && <Text className="card__tip">AI 抠图中，发丝级分割需要几秒钟…</Text>}
-        {analyzing && !segmenting && <Text className="card__tip">AI 正在分析背景色…</Text>}
-        {!!note && !segmenting && !analyzing && <Text className="card__tip">{note}</Text>}
+        {!!note && !segmenting && <Text className="card__tip">{note}</Text>}
       </View>
 
       {/* 容差（AI 抠图模式下无需调节） */}

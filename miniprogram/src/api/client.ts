@@ -1,82 +1,135 @@
-import Taro from '@tarojs/taro';
-import { BASE_URL } from '@/config';
-import { fetchTicket } from './cloud';
-
-interface ApiError {
-  error?: string;
-}
-
-/** 需要云函数票据的工具接口（路径 → 工具名） */
-const TICKET_TOOLS: Record<string, string> = {
-  '/api/mp/similar': 'similar',
-  '/api/mp/image-edit': 'image-edit',
-  '/api/mp/segment': 'segment',
-};
-
-interface CachedTicket {
-  ticket: string;
-  /** 本地缓存过期时间（服务端 5 分钟，客户端提前 1 分钟失效） */
-  exp: number;
-}
-
-const ticketCache = new Map<string, CachedTicket>();
-
-async function getCachedTicket(tool: string): Promise<string> {
-  const cached = ticketCache.get(tool);
-  if (cached && Date.now() < cached.exp) return cached.ticket;
-  const res = await fetchTicket(tool);
-  ticketCache.set(tool, {
-    ticket: res.ticket as string,
-    exp: Date.now() + 4 * 60 * 1000,
-  });
-  return res.ticket as string;
-}
-
-async function rawPost(
-  path: string,
-  data: Record<string, unknown>,
-  ticket?: string,
-): Promise<Taro.request.SuccessCallbackResult> {
-  const header: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (ticket) header['x-mp-ticket'] = ticket;
-  return Taro.request({
-    url: BASE_URL + path,
-    method: 'POST',
-    data,
-    header,
-    timeout: 180000,
-  });
-}
-
-function unwrap<T>(res: Taro.request.SuccessCallbackResult): T {
-  const body = res.data as (T & ApiError) | undefined;
-  if (res.statusCode !== 200) {
-    throw new Error(body?.error || `请求失败（${res.statusCode}）`);
-  }
-  if (body && typeof body === 'object' && body.error) {
-    throw new Error(body.error);
-  }
-  return body as T;
-}
-
 /**
- * POST JSON 并返回业务数据。
- * /api/mp/* 接口自动携带云函数票据；401（票据过期/无效）时刷新票据重试一次。
+ * AI 工具统一客户端：全部走微信云开发云函数，图片经云存储中转。
+ * 流程：chooseImage（本地选图+安全检测）→ uploadImage（云存储）→ 云函数处理 → fileID 结果。
  */
-export async function post<T>(
-  path: string,
+import { callCloud } from './cloud';
+
+export class ApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+async function callTool<T extends { error?: string; code?: string }>(
+  name: string,
   data: Record<string, unknown>,
 ): Promise<T> {
-  const tool = TICKET_TOOLS[path];
-  if (!tool) {
-    return unwrap<T>(await rawPost(path, data));
+  const res = await callCloud<T>(name, data);
+  if (res && typeof res === 'object' && res.error) {
+    throw new ApiError(res.error, res.code);
   }
-  let ticket = await getCachedTicket(tool);
-  let res = await rawPost(path, data, ticket);
-  if (res.statusCode === 401) {
-    ticketCache.delete(tool);
-    ticket = await getCachedTicket(tool);
-    res = await rawPost(path, data, ticket);
-  }
-  return unwrap<T>(res);
+  return res;
+}
+
+/* ---------- 生成相似图 ---------- */
+
+export interface SimilarOptions {
+  width?: number;
+  height?: number;
+  similarity?: number;
+  count?: number;
+  modelKey?: string;
+  transparent?: boolean;
+}
+
+export interface GenerateResultItem {
+  fileID: string;
+  width?: number;
+  height?: number;
+}
+
+export interface SimilarResponse {
+  results: GenerateResultItem[];
+  remaining?: number;
+  limit?: number;
+  size?: string;
+  format?: string;
+  error?: string;
+  code?: string;
+}
+
+export async function generateSimilar(
+  inputFileID: string,
+  opts: SimilarOptions = {},
+): Promise<SimilarResponse> {
+  return callTool<SimilarResponse>('generate', {
+    tool: 'similar',
+    fileID: inputFileID,
+    ...opts,
+  });
+}
+
+/* ---------- 图像编辑：去水印 / 智能消除 / 老照片修复 ---------- */
+
+export type EditMode = 'watermark' | 'object' | 'restore';
+
+export async function generateEdit(
+  inputFileID: string,
+  mode: EditMode,
+): Promise<SimilarResponse> {
+  return callTool<SimilarResponse>('generate', {
+    tool: mode,
+    fileID: inputFileID,
+  });
+}
+
+/* ---------- AI 主体分割（证件照/智能抠图） ---------- */
+
+export interface SegmentResponse {
+  fileID?: string;
+  width?: number;
+  height?: number;
+  remaining?: number;
+  limit?: number;
+  error?: string;
+  code?: string;
+}
+
+export async function segmentImage(inputFileID: string): Promise<SegmentResponse> {
+  return callTool<SegmentResponse>('segment', { fileID: inputFileID });
+}
+
+/* ---------- 图标拆分 ---------- */
+
+export interface SplitIconItem {
+  name: string;
+  fileID: string;
+  w: number;
+  h: number;
+}
+
+export interface SplitIconsResponse {
+  icons?: SplitIconItem[];
+  spriteFileID?: string;
+  spriteMeta?: {
+    cols: number;
+    rows: number;
+    cellW: number;
+    cellH: number;
+    gap: number;
+    items: { index: number; name: string; x: number; y: number; w: number; h: number }[];
+  };
+  note?: string;
+  remaining?: number;
+  limit?: number;
+  error?: string;
+  code?: string;
+}
+
+export interface SplitIconsOptions {
+  targetSize?: number;
+  cols?: number;
+  gap?: number;
+}
+
+export async function splitIcons(
+  inputFileID: string,
+  opts: SplitIconsOptions = {},
+): Promise<SplitIconsResponse> {
+  return callTool<SplitIconsResponse>('split-icons', {
+    fileID: inputFileID,
+    ...opts,
+  });
 }

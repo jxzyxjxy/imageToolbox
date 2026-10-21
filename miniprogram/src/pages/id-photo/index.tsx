@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Canvas, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { post } from '../../api/client';
-import {
-  chooseImage,
-  dataUrlToTempFile,
-  saveToAlbum,
-  ChosenImage,
-} from '../../utils/image';
+import { segmentImage } from '../../api/client';
+import { uploadImage, downloadTemp } from '../../api/cloud';
+import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import {
   canvasToTempFile,
   fitSize,
@@ -46,13 +42,6 @@ const BG_COLORS: { name: string; value: string }[] = [
   { name: '灰', value: '#c8ccd4' },
 ];
 
-interface AnalyzeResponse {
-  bg: [number, number, number];
-  uniform: boolean;
-  confidence?: number;
-  note?: string;
-}
-
 /** 在离屏 canvas 上采样照片四角的平均背景色（不依赖 AI） */
 async function sampleLocalCorner(
   chosen: ChosenImage,
@@ -76,7 +65,6 @@ export default function IdPhoto() {
   const [spec, setSpec] = useState<IdSpec>(SPECS[0]);
   const [result, setResult] = useState('');
   const [busy, setBusy] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [note, setNote] = useState('');
   // AI 分割结果（透明背景人像临时文件），存在时跳过本地泛洪抠图
   const [aiSeg, setAiSeg] = useState<string | null>(null);
@@ -163,14 +151,14 @@ export default function IdPhoto() {
       setNote('');
       setAiSeg(null);
 
-      // 1. 优先：服务端 AI 人像分割（发丝级，适配复杂背景）
+      // 1. 优先：云函数 AI 人像分割（发丝级，适配复杂背景）
       setSegmenting(true);
       setNote('AI 抠图中，复杂背景也能自动去除…');
       try {
-        const res = await post<{ dataUrl: string }>('/api/mp/segment', {
-          imageBase64: chosen.dataUrl,
-        });
-        const segPath = await dataUrlToTempFile(res.dataUrl);
+        const inputFileID = await uploadImage(chosen.filePath);
+        const res = await segmentImage(inputFileID);
+        if (!res.fileID) throw new Error(res.error || 'AI 抠图失败');
+        const segPath = await downloadTemp(res.fileID);
         setAiSeg(segPath);
         setSegmenting(false);
         setNote('AI 已自动去除背景，直接选背景色与规格即可');
@@ -184,27 +172,8 @@ export default function IdPhoto() {
       // 2. 兜底：本地采样四角背景色 + 泛洪抠图
       const bg = await sampleLocalCorner(chosen);
       setRefColor(bg);
+      setNote('已使用照片背景色，可拖动容差优化抠图');
       await generate(chosen, bg, 16, bgColor, spec, null);
-
-      // 3. AI 背景色增强，仅高置信度覆盖
-      setAnalyzing(true);
-      try {
-        const res = await post<AnalyzeResponse>('/api/analyze', {
-          imageBase64: chosen.dataUrl,
-        });
-        if (
-          Array.isArray(res.bg) &&
-          res.bg.length === 3 &&
-          (res.confidence === undefined || res.confidence >= 0.6)
-        ) {
-          setRefColor(res.bg);
-          setNote('AI 已识别背景色');
-        }
-      } catch {
-        /* 本地模式已可用，忽略 */
-      } finally {
-        setAnalyzing(false);
-      }
     } catch (err) {
       console.error(err);
     }
@@ -249,8 +218,7 @@ export default function IdPhoto() {
           </View>
         )}
         {segmenting && <Text className="card__tip">AI 抠图中，发丝级分割需要几秒钟…</Text>}
-        {analyzing && !segmenting && <Text className="card__tip">AI 正在分析背景…</Text>}
-        {!!note && !segmenting && !analyzing && <Text className="card__tip">{note}</Text>}
+        {!!note && !segmenting && <Text className="card__tip">{note}</Text>}
       </View>
 
       {image && (
