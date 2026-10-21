@@ -208,6 +208,16 @@ export async function handleImageEdit(
     const { mime, buffer } = parseDataUrl(imageBase64);
     const ext = extFromMime(mime);
 
+    // 源图含真实透明像素时，生成完成后需把对应区域还原透明（输出 PNG）
+    const resizedSource = await sharp(buffer)
+      .rotate()
+      .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+      .ensureAlpha()
+      .png()
+      .toBuffer();
+    const srcStats = await sharp(resizedSource).stats();
+    const srcTransparent = (srcStats.channels[3]?.min ?? 255) < 250;
+
     const imageUrl = await resolveReferenceImageUrl({
       buffer,
       mime,
@@ -224,6 +234,18 @@ export async function handleImageEdit(
         count: 1,
         forwardHeaders,
       });
+
+      if (srcTransparent) {
+        const res = await fetch(imageUrls[0]);
+        if (!res.ok) {
+          return NextResponse.json({ error: '结果图下载失败，请重试' }, { status: 502 });
+        }
+        const resultBuf = Buffer.from(await res.arrayBuffer());
+        const merged = await intersectSourceAlpha(resultBuf, resizedSource);
+        return NextResponse.json({
+          imageUrl: `data:image/png;base64,${merged.toString('base64')}`,
+        });
+      }
       return NextResponse.json({ imageUrl: imageUrls[0] });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'AI 处理失败，请重试';

@@ -32,16 +32,19 @@ export async function resolveReferenceImageUrl(params: {
     return storage.generatePresignedUrl({ key, expireTime: 3600 });
   }
 
-  // 自托管：压缩为长边 2048 的 JPEG data URL，控制请求体积
-  const compressed = await sharp(buffer)
-    .rotate()
-    .resize({
-      width: 2048,
-      height: 2048,
-      fit: 'inside',
-      withoutEnlargement: true,
-    })
-    .jpeg({ quality: 85 })
-    .toBuffer();
+  // 自托管：压缩为长边 2048 的 JPEG data URL，控制请求体积。
+  // JPEG 不支持透明：含 alpha 的图（如圆角 PNG 素材）必须先铺白底，
+  // 否则透明区会被渲染成黑色，生图模型会按"黑底图"生成导致结果带黑边。
+  const meta = await sharp(buffer).metadata();
+  let pipeline = sharp(buffer).rotate().resize({
+    width: 2048,
+    height: 2048,
+    fit: 'inside',
+    withoutEnlargement: true,
+  });
+  if (meta.hasAlpha) {
+    pipeline = pipeline.flatten({ background: '#ffffff' });
+  }
+  const compressed = await pipeline.jpeg({ quality: 85 }).toBuffer();
   return `data:image/jpeg;base64,${compressed.toString('base64')}`;
 }
