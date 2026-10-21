@@ -88,7 +88,8 @@ export default function IdPhotoClient() {
       const res = await fetch('/api/segment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/jpeg', 0.9) }),
+        // 必须 PNG：透明 PNG 素材的 alpha 不能丢（转 JPEG 会变黑底）
+        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
       });
       const data = (await res.json()) as { dataUrl?: string; error?: string };
       if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');

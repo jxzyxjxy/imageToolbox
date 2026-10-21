@@ -237,25 +237,61 @@ export async function handleImageEdit(
 
 /* ---------- AI 主体分割（ISNet 本地推理，零外部调用费用） ---------- */
 
+/**
+ * 原图 alpha 与 AI 分割结果取交集：
+ * 原图本就透明的区域（透明 PNG 素材）必须保持透明，不允许模型补出黑色/其他背景。
+ */
+async function intersectSourceAlpha(segmented: Buffer, resizedSource: Buffer): Promise<Buffer> {
+  const base = sharp(segmented).ensureAlpha();
+  const meta = await base.metadata();
+  const w = meta.width ?? 0;
+  const h = meta.height ?? 0;
+  if (!w || !h) return segmented;
+
+  const seg = await base.raw().toBuffer();
+  const srcAlpha = await sharp(resizedSource)
+    .ensureAlpha()
+    .resize(w, h, { fit: 'fill' })
+    .extractChannel(3)
+    .raw()
+    .toBuffer();
+
+  let hasTransparentSource = false;
+  for (let i = 0; i < w * h; i++) {
+    const aSrc = srcAlpha[i];
+    if (aSrc < 250) {
+      hasTransparentSource = true;
+      seg[i * 4 + 3] = Math.min(seg[i * 4 + 3], aSrc);
+    }
+  }
+  if (!hasTransparentSource) return segmented;
+  return sharp(seg, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
+}
+
 export async function handleSegment(body: { imageBase64?: string }): Promise<NextResponse> {
   try {
-    const m = /^data:image\/[\w+.-]+;base64,(.+)$/.exec(body.imageBase64 || '');
-    if (!m) {
+    const parsed = parseDataUrlSafe(body.imageBase64);
+    if (!parsed) {
       return NextResponse.json({ error: '无效的图像数据' }, { status: 400 });
     }
 
-    const input = Buffer.from(m[1], 'base64');
-
-    const resized = await sharp(input)
+    // PNG 保留 alpha（透明素材），其它格式转 JPEG 减小送入模型的体积
+    const isPng = parsed.mime === 'image/png';
+    const resized = await sharp(parsed.buffer)
       .rotate()
-      .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
-      .png()
-      .toBuffer();
+      .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true });
+    const modelInput = isPng
+      ? await resized.png().toBuffer()
+      : await resized.jpeg({ quality: 90 }).toBuffer();
 
     const blob = await removeBackground(
-      new Blob([new Uint8Array(resized)], { type: 'image/png' }),
+      new Blob([new Uint8Array(modelInput)], { type: isPng ? 'image/png' : 'image/jpeg' }),
     );
-    const outBuf = Buffer.from(await blob.arrayBuffer());
+    let outBuf: Buffer<ArrayBufferLike> = Buffer.from(await blob.arrayBuffer());
+
+    if (isPng) {
+      outBuf = await intersectSourceAlpha(outBuf, modelInput);
+    }
 
     return NextResponse.json({
       dataUrl: `data:image/png;base64,${outBuf.toString('base64')}`,
@@ -264,4 +300,11 @@ export async function handleSegment(body: { imageBase64?: string }): Promise<Nex
     console.error('[segment] AI 分割失败:', error);
     return NextResponse.json({ error: 'AI 抠图失败，请稍后重试' }, { status: 500 });
   }
+}
+
+function parseDataUrlSafe(dataUrl?: string): { mime: string; buffer: Buffer } | null {
+  if (!dataUrl) return null;
+  const match = /^data:(image\/[\w+.-]+);base64,([\s\S]*)$/.exec(dataUrl);
+  if (!match) return null;
+  return { mime: match[1], buffer: Buffer.from(match[2], 'base64') };
 }
