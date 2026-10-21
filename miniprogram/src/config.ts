@@ -6,4 +6,4 @@
  * 小程序全部后端能力（登录/限频/内容安全/AI 生图/AI 抠图/图标拆分）
  * 均运行在微信云开发（云函数 + 云存储 + 云数据库），无任何自建服务器依赖。
  */
-export const CLOUD_ENV = 'your-cloud-env-id';
+export const CLOUD_ENV = 'cloud1-d6ga4bn9we9abebf8';
