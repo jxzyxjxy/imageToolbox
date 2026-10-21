@@ -10,7 +10,14 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const url: unknown = body?.url;
-    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) {
+    if (typeof url !== 'string') {
+      return NextResponse.json({ error: '图片地址无效' }, { status: 400 });
+    }
+    // 已是 dataURL（如透明 PNG 消除结果）时直接透传，无需再代理
+    if (url.startsWith('data:image/')) {
+      return NextResponse.json({ dataUrl: url });
+    }
+    if (!/^https?:\/\//.test(url)) {
       return NextResponse.json({ error: '图片地址无效' }, { status: 400 });
     }
 
