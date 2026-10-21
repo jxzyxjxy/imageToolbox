@@ -52,9 +52,10 @@ function post(host, headers, payload, timeoutMs) {
 
 /**
  * 人像分割（整像）。
- * @param {string} imageBase64 图片 base64（不含 data: 前缀，JPG/PNG，≤5MB）
+ * @param {string} imageBase64 图片 base64（不含 data: 前缀，JPG/PNG，≤5MB，分辨率<2000x2000）
  * @returns {Promise<{image: string|null, mask: string|null}>}
- *   image = 透明背景人像 PNG 的 base64（ResultImage），mask = 灰度 mask 兜底
+ *   image = 透明背景人像 PNG 的 base64（ResultImage）
+ *   mask  = Float32 置信度文件的 base64（ResultMask，非图片格式）
  */
 async function humanSegment(imageBase64) {
   const secretId = process.env.TC_SECRET_ID;
@@ -73,11 +74,13 @@ async function humanSegment(imageBase64) {
   const timestamp = Math.floor(Date.now() / 1000);
   const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
 
-  // SegmentPortraitPic 入参：Scene=GEN（人像分割），PortraitImage=图片 base64（无 data: 前缀），RspImgType=base64
+  // SegmentPortraitPic 入参（以官方 SDK 定义为准）：
+  //   Image = 图片 base64（无 data: 前缀，≤5M，分辨率<2000x2000）
+  //   RspImgType = base64 | Url；Scene = GEN 通用 / GS 绿幕
   const payload = JSON.stringify({
-    Scene: 'GEN',
-    PortraitImage: imageBase64,
+    Image: imageBase64,
     RspImgType: 'base64',
+    Scene: 'GEN',
   });
 
   // 1. 拼接规范请求串
@@ -149,10 +152,13 @@ async function humanSegment(imageBase64) {
     throw err;
   }
 
-  // SegmentPortraitPic 返回：Image=透明背景人像 PNG base64；MaskImage=人像分割 mask
+  // SegmentPortraitPic 返回（以官方 SDK 定义为准）：
+  //   ResultImage = 透明背景人像 PNG base64
+  //   ResultMask = 人像置信度数据（Float32 二进制文件的 base64，非图片，需按浮点解码）
   return {
-    image: resp.Image || null,
-    mask: resp.MaskImage || null,
+    image: resp.ResultImage || null,
+    mask: resp.ResultMask || null,
+    maskType: 'float32',
   };
 }
 

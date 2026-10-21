@@ -147,6 +147,7 @@ async function humanSegment(imageBase64) {
   const result = {
     image: data.foreground_image || data.image || data.result || null,
     mask: data.mask || null,
+    maskType: 'image', // 火山 mask 为灰度图片（base64 PNG）
   };
   if (!result.image && !result.mask) {
     console.error('[volc] HumanSegment 返回无图像数据:', JSON.stringify(Object.keys(data)));

@@ -26,16 +26,26 @@ function pickSegmentProvider() {
   return null;
 }
 
-/** 只有 mask（灰度图）时：把 mask 缩放到源图尺寸，作为 alpha 合成 */
-function applyMask(srcImg, maskImg) {
+/**
+ * 只有 mask 时：腾讯 ResultMask 是 Float32 置信度文件（base64，非图片），
+ * 每个浮点数对应源图（上送图）一个像素的人体置信度，按序覆盖整图。
+ * 解码为灰度 alpha 后与源图合成。浮点量纲兼容 0~1 与 0~255 两种。
+ */
+async function applyFloatMask(srcImg, maskBase64) {
   const { width: w, height: h } = srcImg.bitmap;
-  maskImg.resize(w, h, pixels.Jimp.RESIZE_BILINEAR);
+  const buf = Buffer.from(maskBase64, 'base64');
+  const floats = new Float32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
+  if (floats.length < w * h) {
+    const e = new Error(`mask 尺寸不匹配（${floats.length} < ${w * h}）`);
+    e.code = 'SEGMENT_FAILED';
+    throw e;
+  }
+  let max = 0;
+  for (let i = 0; i < w * h; i++) if (floats[i] > max) max = floats[i];
+  const scale = max > 1.5 ? 1 : 255; // 0~255 量纲直接用；0~1 量纲乘 255
   const src = srcImg.bitmap.data;
-  const mask = maskImg.bitmap.data;
   for (let i = 0; i < w * h; i++) {
-    const o = i * 4;
-    // mask 灰度（取 R 通道）作为透明度
-    src[o + 3] = mask[o];
+    src[i * 4 + 3] = Math.max(0, Math.min(255, Math.round(floats[i] * scale)));
   }
   return srcImg;
 }
@@ -94,8 +104,21 @@ exports.main = async (event) => {
     let outImg;
     if (seg.image) {
       outImg = await pixels.Jimp.read(Buffer.from(seg.image, 'base64'));
+    } else if (seg.mask && seg.maskType === 'float32') {
+      // 腾讯兜底：ResultMask 为 Float32 置信度文件（非图片），尺寸与上送图一致
+      outImg = await applyFloatMask(flat.clone(), seg.mask);
+    } else if (seg.mask) {
+      // 火山兜底：mask 为灰度图片
+      const maskImg = await pixels.Jimp.read(Buffer.from(seg.mask, 'base64'));
+      maskImg.resize(flat.bitmap.width, flat.bitmap.height, pixels.Jimp.RESIZE_BILINEAR);
+      outImg = flat.clone();
+      const od = outImg.bitmap.data;
+      const md = maskImg.bitmap.data;
+      for (let i = 0; i < od.length / 4; i++) od[i * 4 + 3] = md[i * 4];
     } else {
-      outImg = applyMask(srcImg.clone(), await pixels.Jimp.read(Buffer.from(seg.mask, 'base64')));
+      const e = new Error('分割服务未返回有效结果');
+      e.code = 'SEGMENT_FAILED';
+      throw e;
     }
 
     // 分割输出尺寸可能与输入不一致（模型侧缩放），统一回源图尺寸
