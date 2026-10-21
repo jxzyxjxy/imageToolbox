@@ -73,7 +73,12 @@ async function humanSegment(imageBase64) {
   const timestamp = Math.floor(Date.now() / 1000);
   const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
 
-  const payload = JSON.stringify({ ImageBase64: imageBase64 });
+  // SegmentPortraitPic 入参：Scene=GEN（人像分割），PortraitImage=图片 base64（无 data: 前缀），RspImgType=base64
+  const payload = JSON.stringify({
+    Scene: 'GEN',
+    PortraitImage: imageBase64,
+    RspImgType: 'base64',
+  });
 
   // 1. 拼接规范请求串
   const canonicalHeaders =
@@ -144,9 +149,10 @@ async function humanSegment(imageBase64) {
     throw err;
   }
 
+  // SegmentPortraitPic 返回：Image=透明背景人像 PNG base64；MaskImage=人像分割 mask
   return {
-    image: resp.ResultImage || null,
-    mask: resp.ResultMask || null,
+    image: resp.Image || null,
+    mask: resp.MaskImage || null,
   };
 }
 
