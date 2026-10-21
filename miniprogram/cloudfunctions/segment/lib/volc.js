@@ -4,7 +4,12 @@
  *
  * 环境变量：
  *   VOLC_ACCESS_KEY / VOLC_SECRET_KEY  火山引擎主账号或 IAM 子账号 AK/SK（必填）
- *   VOLC_REGION                        默认 cn-beijing
+ *   VOLC_REGION                        默认 cn-north-1（火山视觉服务 region）
+ *
+ * 接口文档（人像抠图 HumanSegment，2020-08-26）：
+ *   https://www.volcengine.com/docs/6318/66291
+ *   https://www.volcengine.com/docs/86081/1804793
+ * 开通入口：智能视觉控制台 https://console.volcengine.com/ai/overview
  *
  * 注意：该服务使用火山引擎访问控制(IAM)的 AK/SK，与方舟 ARK_API_KEY 是两套凭证。
  */
@@ -69,12 +74,12 @@ async function humanSegment(imageBase64) {
   }
 
   const host = 'visual.volcengineapi.com';
-  const region = process.env.VOLC_REGION || 'cn-beijing';
+  const region = process.env.VOLC_REGION || 'cn-north-1';
   const service = 'cv';
-  const payload = JSON.stringify({
-    req_key: 'human_segment',
-    binary_data_base64: [imageBase64],
-  });
+  // 官方要求 application/x-www-form-urlencoded：
+  // image_base64 纯 base64（不含 data: 前缀），return_foreground_image=1 直接返回透明 PNG
+  const form = `image_base64=${encodeURIComponent(imageBase64)}&refine=1&return_foreground_image=1`;
+  const payload = form;
 
   const now = new Date();
   const xDate = volcDate(now);
@@ -85,7 +90,7 @@ async function humanSegment(imageBase64) {
 
   // 规范请求（签名头：content-type、host、x-content-sha256、x-date）
   const signedHeaderMap = {
-    'content-type': 'application/json',
+    'content-type': 'application/x-www-form-urlencoded',
     host,
     'x-content-sha256': payloadHash,
     'x-date': xDate,
@@ -112,6 +117,7 @@ async function humanSegment(imageBase64) {
     host,
     `/?${query}`,
     {
+      'Content-Type': 'application/x-www-form-urlencoded',
       'X-Date': xDate,
       'X-Content-Sha256': payloadHash,
       Authorization: authorization,
@@ -137,8 +143,9 @@ async function humanSegment(imageBase64) {
   }
 
   const data = json.data || {};
+  // foreground_image：透明背景前景 PNG（return_foreground_image=1 时返回）；mask 为兜底
   const result = {
-    image: data.image || data.result || null,
+    image: data.foreground_image || data.image || data.result || null,
     mask: data.mask || null,
   };
   if (!result.image && !result.mask) {
