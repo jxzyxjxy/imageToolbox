@@ -221,7 +221,20 @@ export const BrushCanvas = forwardRef<BrushCanvasHandle, BrushCanvasProps>(
         const cctx = compose.getContext('2d');
         cctx.clearRect(0, 0, w, h);
         cctx.drawImage(img as unknown as never, 0, 0, w, h);
-        cctx.drawImage(mask as unknown as never, 0, 0);
+        // 屏幕上蒙版是半透明（便于看清涂抹范围），送 AI 的合成图需把涂鸦压成实色：
+        // Seedream 涂鸦编辑依赖颜色鲜明的涂鸦定位，半透明小区域易被模型忽略。
+        const solidId = `${composeId}-solid`;
+        const solid = await getCanvas(solidId);
+        solid.width = w;
+        solid.height = h;
+        const sctx = solid.getContext('2d');
+        sctx.globalCompositeOperation = 'source-over';
+        sctx.clearRect(0, 0, w, h);
+        sctx.drawImage(mask as unknown as never, 0, 0);
+        sctx.globalCompositeOperation = 'source-in';
+        sctx.fillStyle = maskColor;
+        sctx.fillRect(0, 0, w, h);
+        cctx.drawImage(solid as unknown as never, 0, 0);
         return canvasToTempFile(compose, { fileType: 'png' });
       },
     }));
@@ -250,6 +263,18 @@ export const BrushCanvas = forwardRef<BrushCanvasHandle, BrushCanvasProps>(
         <Canvas
           type="2d"
           id={composeId}
+          style={{
+            position: 'fixed',
+            left: '-9999px',
+            top: '-9999px',
+            width: '10px',
+            height: '10px',
+          }}
+        />
+        {/* 隐藏实色蒙版画布（送 AI 涂鸦定位用） */}
+        <Canvas
+          type="2d"
+          id={`${composeId}-solid`}
           style={{
             position: 'fixed',
             left: '-9999px',
