@@ -1,0 +1,41 @@
+.proc-ph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 360rpx;
+  box-sizing: border-box;
+  padding: 24rpx;
+  background: linear-gradient(135deg, #f2f5ff, #f7f9ff);
+  border: 2rpx dashed #c7d2fe;
+  border-radius: 28rpx;
+
+  &__spinner {
+    width: 56rpx;
+    height: 56rpx;
+    border: 6rpx solid rgba(99, 102, 241, 0.15);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: proc-ph-spin 0.8s linear infinite;
+  }
+
+  &__title {
+    margin-top: 24rpx;
+    font-size: 26rpx;
+    font-weight: 600;
+    color: #4338ca;
+  }
+
+  &__desc {
+    margin-top: 10rpx;
+    font-size: 22rpx;
+    color: #64748b;
+    text-align: center;
+  }
+}
+
+@keyframes proc-ph-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

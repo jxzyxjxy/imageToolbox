@@ -4,6 +4,7 @@ import Taro from '@tarojs/taro';
 import { generateEdit } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
+import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
 
 export default function Restore() {
@@ -29,7 +30,6 @@ export default function Restore() {
     }
     setProcessing(true);
     setResult(null);
-    Taro.showLoading({ title: '修复中，请稍候…', mask: true });
     try {
       const inputFileID = await uploadImage(image.filePath);
       const data = await generateEdit(inputFileID, 'restore');
@@ -43,7 +43,6 @@ export default function Restore() {
       const msg = err instanceof Error ? err.message : '修复失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
     } finally {
-      Taro.hideLoading();
       setProcessing(false);
     }
   };
@@ -87,34 +86,45 @@ export default function Restore() {
         )}
       </View>
 
-      {/* 结果对比 */}
-      {result && image && (
+      {/* 结果对比：修复中显示占位动画 */}
+      {(result || processing) && image && (
         <View className="card">
           <Text className="card__label">修复结果</Text>
-          <View className="compare">
-            <View className="compare__item">
-              <Image
-                className="compare__img"
-                src={image.filePath}
-                mode="aspectFit"
-              />
-              <Text className="compare__cap">修复前</Text>
-            </View>
-            <View className="compare__item">
-              <Image
-                className="compare__img"
-                src={result.url}
-                mode="aspectFit"
-                onClick={() =>
-                  Taro.previewImage({ current: result.url, urls: [result.url] })
-                }
-              />
-              <Text className="compare__cap compare__cap--ok">修复后</Text>
-            </View>
-          </View>
-          <Button className="result__save" onClick={saveResult}>
-            保存到相册
-          </Button>
+          {processing ? (
+            <ProcessPlaceholder
+              title="AI 正在修复照片…"
+              desc="划痕修复与清晰度增强需要十几秒，请勿退出页面"
+            />
+          ) : (
+            result && (
+              <>
+                <View className="compare">
+                  <View className="compare__item">
+                    <Image
+                      className="compare__img"
+                      src={image.filePath}
+                      mode="aspectFit"
+                    />
+                    <Text className="compare__cap">修复前</Text>
+                  </View>
+                  <View className="compare__item">
+                    <Image
+                      className="compare__img"
+                      src={result.url}
+                      mode="aspectFit"
+                      onClick={() =>
+                        Taro.previewImage({ current: result.url, urls: [result.url] })
+                      }
+                    />
+                    <Text className="compare__cap compare__cap--ok">修复后</Text>
+                  </View>
+                </View>
+                <Button className="result__save" onClick={saveResult}>
+                  保存到相册
+                </Button>
+              </>
+            )
+          )}
         </View>
       )}
 

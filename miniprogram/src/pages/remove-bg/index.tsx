@@ -12,6 +12,7 @@ import {
   removeBackgroundPixels,
   sampleCornerColorFromData,
 } from '../../utils/canvas';
+import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
 
 /** 处理副本最长边（像素级处理，兼顾内存与效果） */
@@ -181,16 +182,36 @@ export default function RemoveBg() {
         </View>
       )}
 
-      {/* 结果 */}
-      {result && (
+      {/* 结果：AI 抠图/本地处理中显示占位动画 */}
+      {(result || segmenting || busy) && image && (
         <View className="card">
-          <Text className="card__label">抠图结果{busy ? '（处理中…）' : ''}</Text>
-          <View className="checker">
-            <Image className="checker__img" src={result} mode="aspectFit" />
-          </View>
-          <Button className="result__save" onClick={() => saveToAlbum(result)}>
-            保存透明 PNG 到相册
-          </Button>
+          <Text className="card__label">抠图结果</Text>
+          {segmenting || (!result && busy) ? (
+            <ProcessPlaceholder
+              title={segmenting ? 'AI 正在精细抠图…' : '正在抠图…'}
+              desc={
+                segmenting
+                  ? '发丝级分割需要几秒钟，请勿退出页面'
+                  : '本地处理中，请稍候'
+              }
+            />
+          ) : (
+            <>
+              <View className="checker" style={{ position: 'relative' }}>
+                <Image className="checker__img" src={result} mode="aspectFit" />
+                {busy && (
+                  <View className="checker__mask">
+                    <Text className="checker__mask-text">正在重新处理…</Text>
+                  </View>
+                )}
+              </View>
+              {!busy && (
+                <Button className="result__save" onClick={() => saveToAlbum(result)}>
+                  保存透明 PNG 到相册
+                </Button>
+              )}
+            </>
+          )}
         </View>
       )}
 

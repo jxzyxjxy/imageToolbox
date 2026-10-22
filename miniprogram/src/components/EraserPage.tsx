@@ -5,6 +5,7 @@ import { generateEdit } from '../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../api/cloud';
 import { chooseImage, saveToAlbum, ChosenImage } from '../utils/image';
 import { BrushCanvas, BrushCanvasHandle } from './BrushCanvas';
+import ProcessPlaceholder from './ProcessPlaceholder';
 
 interface EraserPageProps {
   /** watermark=去水印(橙) object=智能消除(粉) */
@@ -58,7 +59,6 @@ export default function EraserPage({
     }
     setProcessing(true);
     setResult(null);
-    Taro.showLoading({ title: 'AI 处理中，请稍候…', mask: true });
     try {
       const composed = await brushRef.current.getComposedFile();
       if (!composed) throw new Error('蒙版合成失败');
@@ -75,7 +75,6 @@ export default function EraserPage({
       const msg = err instanceof Error ? err.message : '处理失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
     } finally {
-      Taro.hideLoading();
       setProcessing(false);
     }
   };
@@ -155,21 +154,32 @@ export default function EraserPage({
         </View>
       )}
 
-      {/* 结果 */}
-      {result && (
+      {/* 结果：处理中显示占位动画 */}
+      {(result || processing) && (
         <View className="card">
           <Text className="card__label">处理结果</Text>
-          <Image
-            className="result-img"
-            src={result.url}
-            mode="aspectFit"
-            onClick={() =>
-              Taro.previewImage({ current: result.url, urls: [result.url] })
-            }
-          />
-          <Button className="result__save" onClick={saveResult}>
-            保存到相册
-          </Button>
+          {processing ? (
+            <ProcessPlaceholder
+              title="AI 正在处理，请稍候…"
+              desc="智能识别与填补还原需要十几秒，请勿退出页面"
+            />
+          ) : (
+            result && (
+              <>
+                <Image
+                  className="result-img"
+                  src={result.url}
+                  mode="aspectFit"
+                  onClick={() =>
+                    Taro.previewImage({ current: result.url, urls: [result.url] })
+                  }
+                />
+                <Button className="result__save" onClick={saveResult}>
+                  保存到相册
+                </Button>
+              </>
+            )
+          )}
         </View>
       )}
 

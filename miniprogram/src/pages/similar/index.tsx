@@ -4,6 +4,7 @@ import Taro from '@tarojs/taro';
 import { generateSimilar } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
 import { chooseImage, saveToAlbum, formatSize, ChosenImage } from '../../utils/image';
+import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
 
 type ModelKey = 'seedream4' | 'seedream5flash';
@@ -68,7 +69,6 @@ export default function Similar() {
     }
     setGenerating(true);
     setResults([]);
-    Taro.showLoading({ title: '生成中，请稍候…', mask: true });
     try {
       // 1) 图片上传云存储（避免 callFunction 1MB 载荷限制）
       const inputFileID = await uploadImage(image.filePath);
@@ -93,7 +93,6 @@ export default function Similar() {
       const msg = err instanceof Error ? err.message : '生成失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
     } finally {
-      Taro.hideLoading();
       setGenerating(false);
     }
   };
@@ -245,28 +244,37 @@ export default function Similar() {
         </View>
       </View>
 
-      {/* 结果 */}
-      {results.length > 0 && (
+      {/* 结果：生成中显示占位动画 */}
+      {(results.length > 0 || generating) && (
         <View className="card">
-          <Text className="card__label">生成结果（点击预览，长按无效请用按钮保存）</Text>
-          <View className={`results ${results.length === 1 ? 'results--single' : ''}`}>
-            {results.map((r, i) => (
-              <View key={i} className="results__item">
-                <Image
-                  className="results__img"
-                  src={r.url}
-                  mode="aspectFit"
-                  onClick={() => previewImage(r.url)}
-                />
-                <Button
-                  className="results__save"
-                  onClick={() => saveResult(r)}
-                >
-                  保存
-                </Button>
-              </View>
-            ))}
-          </View>
+          <Text className="card__label">
+            {generating ? '生成结果' : '生成结果（点击预览，长按无效请用按钮保存）'}
+          </Text>
+          {generating ? (
+            <ProcessPlaceholder
+              title="AI 正在生成相似图…"
+              desc={`本次生成 ${count} 张，大模型出图需要 20~40 秒，请勿退出页面`}
+            />
+          ) : (
+            <View className={`results ${results.length === 1 ? 'results--single' : ''}`}>
+              {results.map((r, i) => (
+                <View key={i} className="results__item">
+                  <Image
+                    className="results__img"
+                    src={r.url}
+                    mode="aspectFit"
+                    onClick={() => previewImage(r.url)}
+                  />
+                  <Button
+                    className="results__save"
+                    onClick={() => saveResult(r)}
+                  >
+                    保存
+                  </Button>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 

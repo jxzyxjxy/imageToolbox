@@ -1,1 +1,1 @@
-page{background-color:#f5f6fa;color:#1e293b;font-size:28rpx;line-height:1.5}button,image,input,text,view{box-sizing:border-box}button{background:none;border:none;font-size:inherit;line-height:inherit;margin:0;padding:0}button::after{border:none}
+@import "./app-origin.wxss";@import "./common.wxss";

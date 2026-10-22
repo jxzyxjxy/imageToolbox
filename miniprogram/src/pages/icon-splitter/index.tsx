@@ -4,6 +4,7 @@ import Taro from '@tarojs/taro';
 import { splitIcons } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
+import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
 
 interface IconView {
@@ -54,7 +55,6 @@ export default function IconSplitter() {
     setBusy(true);
     setIcons([]);
     setSprite(null);
-    Taro.showLoading({ title: '正在拆分…', mask: true });
     try {
       const inputFileID = await uploadImage(image.filePath);
       const data = await splitIcons(inputFileID, { targetSize, cols, gap });
@@ -86,7 +86,6 @@ export default function IconSplitter() {
         icon: 'none',
       });
     } finally {
-      Taro.hideLoading();
       setBusy(false);
     }
   };
@@ -204,8 +203,17 @@ export default function IconSplitter() {
         </>
       )}
 
-      {/* 结果 */}
-      {icons.length > 0 && (
+      {/* 结果：拆分中显示占位动画 */}
+      {busy && (
+        <View className="card">
+          <Text className="card__label">拆分结果</Text>
+          <ProcessPlaceholder
+            title="正在拆分图标…"
+            desc="云端识别与切分需要几秒钟，请勿退出页面"
+          />
+        </View>
+      )}
+      {!busy && icons.length > 0 && (
         <View className="card">
           <View className="card__label-row">
             <Text className="card__label">拆出 {icons.length} 个图标</Text>
