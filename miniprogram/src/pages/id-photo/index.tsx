@@ -170,14 +170,28 @@ export default function IdPhoto() {
       }
 
       // 2. 兜底：本地采样四角背景色 + 泛洪抠图
-      const bg = await sampleLocalCorner(chosen);
-      setRefColor(bg);
-      setNote('已使用照片背景色，可拖动容差优化抠图');
-      await generate(chosen, bg, 16, bgColor, spec, null);
+      setBusy(true);
+      try {
+        const bg = await sampleLocalCorner(chosen);
+        setRefColor(bg);
+        setNote('已使用照片背景色，可拖动容差优化抠图');
+        await generate(chosen, bg, 16, bgColor, spec, null);
+      } finally {
+        setBusy(false);
+      }
     } catch (err) {
       console.error(err);
+      setBusy(false);
     }
   };
+
+  // 首次生成时自动滚动到结果区，让用户看到生成进度（后续微调参数不打断滚动位置）
+  useEffect(() => {
+    if ((segmenting || busy) && !result) {
+      Taro.pageScrollTo({ selector: '#idp-result', duration: 250 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmenting, busy]);
 
   // 参数变化：防抖重新生成
   useEffect(() => {
@@ -278,18 +292,45 @@ export default function IdPhoto() {
         </>
       )}
 
-      {/* 结果 */}
-      {result && (
-        <View className="card">
+      {/* 结果：选图后即展示，生成中显示占位动画与分阶段进度文案 */}
+      {image && (
+        <View className="card" id="idp-result">
           <Text className="card__label">
-            {spec.name} {spec.w}×{spec.h}px{busy ? '（生成中…）' : ''}
+            {spec.name} {spec.w}×{spec.h}px
           </Text>
-          <View className="photo-wrap">
-            <Image className="photo" src={result} mode="aspectFit" />
-          </View>
-          <Button className="result__save" onClick={() => saveToAlbum(result)}>
-            保存到相册
-          </Button>
+
+          {result && !(segmenting && !aiSeg) ? (
+            <View className="photo-wrap">
+              <Image className="photo" src={result} mode="aspectFit" />
+              {/* 切换规格/背景色等重生成时，在旧图上覆盖提示 */}
+              {busy && (
+                <View className="photo-mask">
+                  <View className="spinner" />
+                  <Text className="photo-mask__text">正在重新生成…</Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View className="photo-wrap">
+              <View className="photo photo--placeholder">
+                <View className="spinner spinner--lg" />
+                <Text className="placeholder__title">
+                  {segmenting ? 'AI 正在精细抠图…' : '正在生成证件照…'}
+                </Text>
+                <Text className="placeholder__desc">
+                  {segmenting
+                    ? '发丝级分割需要几秒，请勿退出页面'
+                    : '正在合成背景与构图…'}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {!busy && !segmenting && result && (
+            <Button className="result__save" onClick={() => saveToAlbum(result)}>
+              保存到相册
+            </Button>
+          )}
         </View>
       )}
 
