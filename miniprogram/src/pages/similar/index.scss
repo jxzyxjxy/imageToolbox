@@ -130,6 +130,7 @@
 
 .opt {
   flex: 1;
+  position: relative;
   border: 2rpx solid #e2e8f0;
   border-radius: 28rpx;
   padding: 24rpx;
@@ -140,6 +141,21 @@
   &--active {
     border-color: #818cf8;
     background: #eef2ff;
+  }
+
+  &--locked {
+    opacity: 0.55;
+  }
+
+  &__lock {
+    position: absolute;
+    top: 10rpx;
+    right: 10rpx;
+    font-size: 18rpx;
+    color: #94a3b8;
+    background: #f1f5f9;
+    border-radius: 999rpx;
+    padding: 2rpx 12rpx;
   }
 
   &__name {

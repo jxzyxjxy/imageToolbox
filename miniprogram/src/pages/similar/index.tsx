@@ -9,9 +9,9 @@ import './index.scss';
 
 type ModelKey = 'seedream4' | 'seedream5flash';
 
-const MODEL_OPTIONS: { key: ModelKey; name: string; desc: string }[] = [
+const MODEL_OPTIONS: { key: ModelKey; name: string; desc: string; locked?: boolean }[] = [
   { key: 'seedream4', name: 'Seedream 4.0', desc: '稳定高质' },
-  { key: 'seedream5flash', name: '5.0 Flash', desc: '新版快速' },
+  { key: 'seedream5flash', name: '5.0 Flash', desc: '新版快速', locked: true },
 ];
 
 const BG_OPTIONS = [
@@ -151,9 +151,16 @@ export default function Similar() {
           {MODEL_OPTIONS.map((m) => (
             <View
               key={m.key}
-              className={`opt ${modelKey === m.key ? 'opt--active' : ''}`}
-              onClick={() => setModelKey(m.key)}
+              className={`opt ${modelKey === m.key ? 'opt--active' : ''} ${m.locked ? 'opt--locked' : ''}`}
+              onClick={() => {
+                if (m.locked) {
+                  Taro.showToast({ title: '5.0 Flash 暂未开放', icon: 'none' });
+                  return;
+                }
+                setModelKey(m.key);
+              }}
             >
+              {!!m.locked && <Text className="opt__lock">即将开放</Text>}
               <Text className="opt__name">{m.name}</Text>
               <Text className="opt__desc">{m.desc}</Text>
             </View>
