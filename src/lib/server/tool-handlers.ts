@@ -187,9 +187,9 @@ export type EditMode = 'watermark' | 'object' | 'restore';
 
 const EDIT_PROMPTS: Record<EditMode, string> = {
   watermark:
-    'Remove all watermarks, overlaid text, logos and stamps from this image, especially in the areas highlighted by the user brush mask. Naturally reconstruct and fill those regions using the surrounding texture, colors and lighting. Keep every other part of the image exactly unchanged. Photorealistic, seamless, high-quality image retouching, no blur, no traces of editing.',
+    '擦除图片中橙色涂抹位置覆盖的所有水印、文字、Logo和印章，依据周围纹理、颜色与光照自然填补还原该区域。除橙色涂抹区域外，图片其他部分完全保持不变，禁止重新绘制或改动。真实自然，无模糊，无修图痕迹。',
   object:
-    'Remove the unwanted objects or people highlighted by the user brush mask from this photo. Seamlessly fill the erased regions with the matching surrounding background, texture and lighting so they look as if they never existed. Keep every other part of the image exactly unchanged. Photorealistic, seamless, high-quality inpainting, no blur, no traces of editing.',
+    '擦除图片中粉色涂抹位置覆盖的多余物体或人物，用与周围匹配的背景、纹理和光照无缝填补该区域，使其看起来从未存在过。除粉色涂抹区域外，图片其他部分完全保持不变，禁止重新绘制或改动。真实自然，无模糊，无修图痕迹。',
   restore:
     'Restore this old, worn, blurred, noisy or damaged photograph into a sharp, clear, high-resolution image. Remove scratches, dust, spots, stains, grain, noise and faded areas; repair cracks, tears and creases; recover facial features and fine details with natural skin and material texture; correct contrast, brightness, white balance and slightly faded colors. Keep the original subject, pose, composition and identity unchanged. Photorealistic, natural, no over-processing, no plastic look, no artifacts.',
 };

@@ -55,12 +55,21 @@ export const BrushEditor = forwardRef<BrushEditorHandle, BrushEditorProps>(
         const base = baseRef.current;
         const mask = maskRef.current;
         if (!base || !mask || historyRef.current.length === 0) return null;
+        // 屏幕上半透明蒙版仅供预览；导出给 AI 前把涂抹区压成实色，涂鸦定位更准确
+        const solid = document.createElement('canvas');
+        solid.width = base.width;
+        solid.height = base.height;
+        const solidCtx = solid.getContext('2d')!;
+        solidCtx.drawImage(mask, 0, 0);
+        solidCtx.globalCompositeOperation = 'source-in';
+        solidCtx.fillStyle = maskColor;
+        solidCtx.fillRect(0, 0, base.width, base.height);
         const composed = document.createElement('canvas');
         composed.width = base.width;
         composed.height = base.height;
         const ctx = composed.getContext('2d')!;
         ctx.drawImage(base, 0, 0);
-        ctx.drawImage(mask, 0, 0);
+        ctx.drawImage(solid, 0, 0);
         return composed.toDataURL('image/png');
       },
     }));
