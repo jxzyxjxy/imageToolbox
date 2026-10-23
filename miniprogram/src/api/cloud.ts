@@ -53,18 +53,67 @@ export async function callCloud<T>(name: string, data: Record<string, unknown> =
   });
 }
 
-/** 启动登录：openid 落库（失败静默，不阻断使用） */
-export async function mpLogin(): Promise<void> {
+/** 用户档案 */
+export interface UserProfile {
+  openid: string;
+  nickname: string;
+  avatarFileID: string;
+  vipLevel: number;
+  vipExpire: number;
+}
+
+/** 启动登录：openid 落库并返回档案（失败静默返回 null，不阻断使用） */
+export async function mpLogin(): Promise<UserProfile | null> {
   try {
-    await callCloud<{ openid?: string; error?: string }>('login');
+    const res = await callCloud<UserProfile & { error?: string }>('login');
+    if (res.error || !res.openid) return null;
+    return res;
   } catch (e) {
     console.warn('[cloud] login 失败:', e);
+    return null;
   }
+}
+
+/** 保存头像昵称（头像先经 uploadAvatar 上传云存储） */
+export async function updateProfile(nickname: string, avatarFileID: string): Promise<UserProfile> {
+  const res = await callCloud<UserProfile & { error?: string }>('login', {
+    action: 'updateProfile',
+    nickname,
+    avatarFileID,
+  });
+  if (res.error) throw new Error(res.error);
+  return res;
+}
+
+/** 上传头像到云存储 avatars/ 目录，返回 fileID */
+export async function uploadAvatar(filePath: string): Promise<string> {
+  const cloud = getWxCloud();
+  if (!cloud) throw new Error('云开发不可用');
+  const ext = (filePath.match(/\.(\w+)$/)?.[1] || 'png').toLowerCase();
+  const cloudPath = `avatars/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  return new Promise<string>((resolve, reject) => {
+    cloud.uploadFile({
+      cloudPath,
+      filePath,
+      success: (res) => resolve(res.fileID),
+      fail: (err) => reject(new Error(err.message || '头像上传失败')),
+    });
+  });
 }
 
 interface SecCheckResult {
   pass: boolean;
   error?: string;
+}
+
+/** 文本内容安全检测（昵称等 UGC 文案） */
+export async function secCheckText(text: string): Promise<SecCheckResult> {
+  try {
+    return await callCloud<SecCheckResult>('sec-check', { text });
+  } catch (e) {
+    console.warn('[cloud] sec-check 不可用，已放行:', e);
+    return { pass: true };
+  }
 }
 
 /** 图片内容安全检测（传入压缩小图的 base64） */

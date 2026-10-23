@@ -1,5 +1,7 @@
 import { View, Text, Image } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
+import UserProfile from '@/components/UserProfile';
+import { maybeShowInterstitialAd } from '@/utils/ad';
 import './index.scss';
 
 interface ToolItem {
@@ -97,6 +99,11 @@ const TOOLS: ToolItem[] = [
 ];
 
 export default function Index() {
+  // 进场插屏广告（已配置广告位 ID 时生效；每次冷启动最多一次）
+  useDidShow(() => {
+    setTimeout(() => maybeShowInterstitialAd(), 800);
+  });
+
   const handleTap = (tool: ToolItem) => {
     if (!tool.ready || !tool.path) {
       Taro.showToast({ title: '敬请期待', icon: 'none' });
@@ -111,6 +118,7 @@ export default function Index() {
       <View className="hero">
         <View className="hero__glow hero__glow--tr" />
         <View className="hero__glow hero__glow--bl" />
+        <UserProfile />
         <View className="hero__logo">
           <Text className="hero__logo-icon">🖼️</Text>
         </View>
