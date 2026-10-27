@@ -139,7 +139,19 @@ export async function uploadImage(filePath: string): Promise<string> {
     cloud.uploadFile({
       cloudPath,
       filePath,
-      success: (res) => resolve(res.fileID),
+      success: (res) => {
+        // 登记中转图，供 cleanup 定时云函数清理（失败不影响主流程）
+        try {
+          wx.cloud
+            .database()
+            .collection('storage_files')
+            .add({ data: { fileID: res.fileID, kind: 'inputs', createdAt: new Date() } })
+            .catch(() => undefined);
+        } catch {
+          // 集合未创建/无权限时忽略，云函数入口有兜底登记
+        }
+        resolve(res.fileID);
+      },
       fail: (err) => reject(new Error(err.message || '图片上传失败')),
     });
   });

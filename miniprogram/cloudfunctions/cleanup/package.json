@@ -1,0 +1,9 @@
+{
+  "name": "cleanup",
+  "version": "1.0.0",
+  "description": "定时清理过期云存储临时文件（inputs/results）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

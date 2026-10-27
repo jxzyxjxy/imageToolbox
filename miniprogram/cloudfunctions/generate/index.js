@@ -111,6 +111,7 @@ exports.main = async (event) => {
 
   try {
     // 2) 下载输入图 + 内容安全
+    if (fileID.includes('/inputs/')) await storage.register(cloud, fileID, 'inputs', OPENID);
     const raw = await storage.download(cloud, fileID);
     await secCheck(raw);
 

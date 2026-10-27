@@ -51,6 +51,7 @@ exports.main = async (event) => {
   if (!quota.ok) return { error: quota.error, code: 'LIMIT', remaining: 0, limit: quota.limit };
 
   try {
+    if (fileID.includes('/inputs/')) await storage.register(cloud, fileID, 'inputs', OPENID);
     const raw = await storage.download(cloud, fileID);
     const srcImg = await Jimp.read(raw);
     const W = srcImg.bitmap.width;

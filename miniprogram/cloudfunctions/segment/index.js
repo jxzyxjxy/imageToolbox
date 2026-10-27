@@ -90,6 +90,7 @@ exports.main = async (event) => {
   if (!quota.ok) return { error: quota.error, code: 'LIMIT', remaining: 0, limit: quota.limit };
 
   try {
+    if (fileID.includes('/inputs/')) await storage.register(cloud, fileID, 'inputs', OPENID);
     const raw = await storage.download(cloud, fileID);
     // 限长边 1600（分割质量与成本平衡，与 H5 服务端一致）
     const srcImg = await pixels.readLimited(raw, 1600);
