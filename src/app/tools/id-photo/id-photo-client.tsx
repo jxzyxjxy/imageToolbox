@@ -85,12 +85,17 @@ export default function IdPhotoClient() {
     // 优先：服务端 AI 人像分割（像素级抠图，适配复杂背景）
     setSegmenting(true);
     try {
+      // 超时兜底：服务端异常时不让 loading 卡死，自动回落本地抠图
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       const res = await fetch('/api/segment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // 必须 PNG：透明 PNG 素材的 alpha 不能丢（转 JPEG 会变黑底）
         body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       const data = (await res.json()) as { dataUrl?: string; error?: string };
       if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
       const segImg = await loadImage(data.dataUrl);

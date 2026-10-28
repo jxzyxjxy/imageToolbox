@@ -58,12 +58,17 @@ export default function RemoveBgClient() {
     // 优先：服务端 AI 主体分割（发丝级，适配复杂背景）
     setSegmenting(true);
     try {
+      // 超时兜底：服务端异常时不让 loading 卡死，自动回落本地抠图
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       const res = await fetch('/api/segment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // 必须 PNG：canvas 默认透明底，转 JPEG 会把透明区压成黑色
         body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       const data = (await res.json()) as { dataUrl?: string; error?: string };
       if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
       const segImg = await loadImage(data.dataUrl);

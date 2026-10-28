@@ -8,6 +8,7 @@ import { removeBackground } from '@imgly/background-removal-node';
 import { resolveReferenceImageUrl } from '@/lib/server/reference-image';
 import { generateImages, ARK_MODEL_KEYS, type ArkModelKey } from '@/lib/server/image-gen';
 import { removeWhiteBackground } from '@/lib/server/remove-bg';
+import { hasTencentCredentials, segmentPortrait } from '@/lib/server/tencent-segment';
 
 /* ---------- 共享小工具 ---------- */
 
@@ -290,6 +291,17 @@ async function intersectSourceAlpha(segmented: Buffer, resizedSource: Buffer): P
   return sharp(seg, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
 }
 
+/** imgly 本地分割兜底（海外 CDN 模型下载可能极慢，限时等待，超时视为不可用） */
+async function removeBackgroundLocal(input: Blob): Promise<Blob> {
+  const LOCAL_TIMEOUT_MS = 45_000;
+  return Promise.race([
+    removeBackground(input),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('本地抠图模型超时')), LOCAL_TIMEOUT_MS),
+    ),
+  ]);
+}
+
 export async function handleSegment(body: { imageBase64?: string }): Promise<NextResponse> {
   try {
     const parsed = parseDataUrlSafe(body.imageBase64);
@@ -306,13 +318,29 @@ export async function handleSegment(body: { imageBase64?: string }): Promise<Nex
       ? await resized.png().toBuffer()
       : await resized.jpeg({ quality: 90 }).toBuffer();
 
-    const blob = await removeBackground(
-      new Blob([new Uint8Array(modelInput)], { type: isPng ? 'image/png' : 'image/jpeg' }),
-    );
-    let outBuf: Buffer<ArrayBufferLike> = Buffer.from(await blob.arrayBuffer());
-
-    if (isPng) {
-      outBuf = await intersectSourceAlpha(outBuf, modelInput);
+    let outBuf: Buffer;
+    if (hasTencentCredentials()) {
+      // 优先：腾讯云人像分割（稳定、快、效果好）。API 限制 base64 ≤5MB，超限转 JPEG
+      let apiInput = modelInput;
+      let apiIsPng = isPng;
+      if (apiInput.length > 4.5 * 1024 * 1024) {
+        apiInput = await sharp(modelInput).jpeg({ quality: 88 }).toBuffer();
+        apiIsPng = false;
+      }
+      outBuf = await segmentPortrait(apiInput.toString('base64'));
+      // 透明 PNG 素材：源 alpha 与分割结果求交，保留源图镂空细节
+      if (apiIsPng) {
+        outBuf = await intersectSourceAlpha(outBuf, modelInput);
+      }
+    } else {
+      // 无腾讯凭证：回落本地 imgly 模型（需下载模型文件，可能较慢）
+      const blob = await removeBackgroundLocal(
+        new Blob([new Uint8Array(modelInput)], { type: isPng ? 'image/png' : 'image/jpeg' }),
+      );
+      outBuf = Buffer.from(await blob.arrayBuffer());
+      if (isPng) {
+        outBuf = await intersectSourceAlpha(outBuf, modelInput);
+      }
     }
 
     return NextResponse.json({
