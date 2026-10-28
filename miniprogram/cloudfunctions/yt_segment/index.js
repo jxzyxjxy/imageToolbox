@@ -92,8 +92,8 @@ exports.main = async (event) => {
   try {
     if (fileID.includes('/inputs/')) await storage.register(cloud, fileID, 'inputs', OPENID);
     const raw = await storage.download(cloud, fileID);
-    // 限长边 1600（分割质量与成本平衡，与 H5 服务端一致）
-    const srcImg = await pixels.readLimited(raw, 1600);
+    // 限长边 1920（分割质量与成本平衡；腾讯 API 要求 <2000×2000，证件照清晰度需要高分辨率）
+    const srcImg = await pixels.readLimited(raw, 1920);
     const srcHasAlpha = pixels.hasTransparent(srcImg);
 
     // 分割 API 以 JPEG 上送（体积小；透明区转白，最后再做 alpha 交集修正）

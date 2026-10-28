@@ -34,6 +34,11 @@ export interface MiniCanvasContext2D {
   createImageData: (w: number, h: number) => MiniImageData;
   fillRect: (x: number, y: number, w: number, h: number) => void;
   clearRect: (x: number, y: number, w: number, h: number) => void;
+  save: () => void;
+  restore: () => void;
+  translate: (x: number, y: number) => void;
+  rotate: (angle: number) => void;
+  scale: (x: number, y: number) => void;
   beginPath: () => void;
   arc: (x: number, y: number, r: number, s: number, e: number) => void;
   fill: () => void;
@@ -77,7 +82,7 @@ export function loadCanvasImage(
   });
 }
 
-/** 导出 canvas 为临时图片文件 */
+/** 导出 canvas 为临时图片文件（显式按像素尺寸导出，避免默认取显示尺寸被缩小） */
 export function canvasToTempFile(
   canvas: MiniCanvas,
   opts: { fileType?: 'png' | 'jpg'; quality?: number } = {},
@@ -85,6 +90,8 @@ export function canvasToTempFile(
   return new Promise((resolve, reject) => {
     Taro.canvasToTempFilePath({
       canvas: canvas as never,
+      destWidth: canvas.width,
+      destHeight: canvas.height,
       fileType: opts.fileType || 'png',
       quality: opts.quality ?? 0.92,
       success: (r) => resolve(r.tempFilePath),

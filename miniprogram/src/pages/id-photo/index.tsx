@@ -15,7 +15,10 @@ import {
 } from '../../utils/canvas';
 import './index.scss';
 
-const PROC_MAX_DIM = 1024;
+/** 源图处理分辨率上限（与分割云函数一致，保证人像细节） */
+const PROC_MAX_DIM = 1920;
+/** 输出放大倍数：规格像素是 300dpi 冲印标准（如一寸 295×413），直接输出在手机上查看太糊，×4 保证清晰度 */
+const OUTPUT_SCALE = 4;
 
 interface IdSpec {
   id: string;
@@ -99,9 +102,11 @@ export default function IdPhoto() {
 
         // 2. 合成证件照（人像 82% + 头顶留白 10%，与 H5 一致）
         const out = await getCanvas('idp-out');
-        out.width = sp.w;
-        out.height = sp.h;
+        out.width = sp.w * OUTPUT_SCALE;
+        out.height = sp.h * OUTPUT_SCALE;
         const octx = out.getContext('2d');
+        // 坐标系放大 OUTPUT_SCALE 倍，后续合成坐标仍按规格尺寸计算，逻辑不变
+        octx.scale(OUTPUT_SCALE, OUTPUT_SCALE);
         octx.fillStyle = bg;
         octx.fillRect(0, 0, sp.w, sp.h);
 
@@ -300,7 +305,7 @@ export default function IdPhoto() {
       {image && (
         <View className="card" id="idp-result">
           <Text className="card__label">
-            {spec.name} {spec.w}×{spec.h}px
+            {spec.name} {spec.w * OUTPUT_SCALE}×{spec.h * OUTPUT_SCALE}px
           </Text>
 
           {result && !(segmenting && !aiSeg) ? (
