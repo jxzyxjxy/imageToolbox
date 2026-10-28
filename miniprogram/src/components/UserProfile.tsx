@@ -19,8 +19,6 @@ import {
 import './UserProfile.scss';
 
 const CACHE_KEY = 'user_profile';
-/** 首启引导已展示标记（展示过就不再自动弹，仍可从入口手动登录） */
-const GUIDE_KEY = 'login_guide_shown';
 
 interface CachedProfile {
   nickname: string;
@@ -38,9 +36,9 @@ function readCache(): CachedProfile | null {
 export default function UserProfile() {
   const [profile, setProfile] = useState<CachedProfile | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
   const [draftAvatar, setDraftAvatar] = useState('');
   const [draftNickname, setDraftNickname] = useState('');
+  const [focusNickname, setFocusNickname] = useState(false);
   const [saving, setSaving] = useState(false);
   /** 入口位置：避让右上角系统胶囊 */
   const [entryStyle, setEntryStyle] = useState<Record<string, string>>({});
@@ -75,29 +73,7 @@ export default function UserProfile() {
       setProfile(fresh);
       Taro.setStorageSync(CACHE_KEY, fresh);
     })();
-
-    // 首次进入：未登录且未展示过引导时，延迟弹出（与进场广告错开）
-    try {
-      const shown = Taro.getStorageSync(GUIDE_KEY);
-      if (!shown && !cached?.nickname) {
-        const timer = setTimeout(() => {
-          // 再确认一次仍未登录（云端档案可能刚拉回来）
-          if (!readCache()?.nickname) setGuideOpen(true);
-        }, 1500);
-        return () => clearTimeout(timer);
-      }
-    } catch {
-      // storage 异常则不弹引导
-    }
   }, []);
-
-  const markGuideShown = () => {
-    try {
-      Taro.setStorageSync(GUIDE_KEY, 1);
-    } catch {
-      // ignore
-    }
-  };
 
   const openPanel = () => {
     setDraftAvatar(profile?.avatarUrl || '');
@@ -105,28 +81,24 @@ export default function UserProfile() {
     setPanelOpen(true);
   };
 
-  const onGuideLogin = () => {
-    markGuideShown();
-    setGuideOpen(false);
-    openPanel();
-  };
-
-  const onGuideSkip = () => {
-    markGuideShown();
-    setGuideOpen(false);
-  };
-
   const closePanel = () => {
-    if (!saving) setPanelOpen(false);
+    if (!saving) {
+      setPanelOpen(false);
+      setFocusNickname(false);
+    }
   };
 
   const onChooseAvatar = (e: { detail?: { avatarUrl?: string } }) => {
     const url = e?.detail?.avatarUrl;
-    if (url) setDraftAvatar(url);
+    if (url) {
+      setDraftAvatar(url);
+      // 头像确认后自动聚焦昵称框，键盘上方即出现「使用微信昵称」候选
+      setFocusNickname(true);
+    }
   };
 
-  const onSave = async () => {
-    const nickname = draftNickname.trim();
+  const doSubmit = async (nicknameOverride?: string) => {
+    const nickname = (nicknameOverride ?? draftNickname).trim();
     if (!nickname) {
       Taro.showToast({ title: '点输入框即可使用微信昵称', icon: 'none' });
       return;
@@ -166,6 +138,16 @@ export default function UserProfile() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onSave = () => doSubmit();
+
+  // 昵称确认（失焦/收起键盘）后头像昵称已齐全则直接自动完成，无需再点按钮
+  const onNicknameBlur = (e: { detail?: { value?: string } }) => {
+    const v = (e?.detail?.value || '').trim();
+    setFocusNickname(false);
+    if (v) setDraftNickname(v);
+    if (v && draftAvatar && !saving) void doSubmit(v);
   };
 
   return (
@@ -208,30 +190,14 @@ export default function UserProfile() {
               type="nickname"
               placeholder="点这里使用微信昵称"
               value={draftNickname}
+              focus={focusNickname}
               onInput={(e) => setDraftNickname(e.detail.value)}
+              onBlur={onNicknameBlur}
             />
 
             <Button className="uprof__save" disabled={saving} onClick={onSave}>
               {saving ? '登录中…' : '完成授权登录'}
             </Button>
-          </View>
-        </View>
-      )}
-
-      {/* 首启登录引导（仅一次，可跳过） */}
-      {guideOpen && !panelOpen && (
-        <View className="uprof__mask" onClick={onGuideSkip}>
-          <View className="uprof__panel" onClick={(e) => e.stopPropagation()}>
-            <Text className="uprof__panel-title">欢迎使用青芽影图</Text>
-            <Text className="uprof__panel-desc">
-              微信一键登录可同步你的使用记录；{'\n'}暂不登录也能正常使用全部功能
-            </Text>
-            <Button className="uprof__save uprof__save--guide" onClick={onGuideLogin}>
-              微信一键登录
-            </Button>
-            <View className="uprof__skip" onClick={onGuideSkip}>
-              <Text className="uprof__skip-text">暂不登录，直接使用</Text>
-            </View>
           </View>
         </View>
       )}
