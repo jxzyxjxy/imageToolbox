@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Image, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { generateEdit } from '../../api/client';
@@ -10,7 +10,19 @@ import './index.scss';
 export default function Restore() {
   const [image, setImage] = useState<ChosenImage | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{ fileID: string; url: string } | null>(null);
+
+  // 修复开始时自动滚动到结果区（占位区渲染后延迟一拍再滚）
+  useEffect(() => {
+    if (processing && !result) {
+      const t = setTimeout(() => {
+        Taro.pageScrollTo({ selector: '#restore-result', duration: 250 }).catch(() => {});
+      }, 120);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processing]);
 
   const pickImage = async () => {
     try {
@@ -31,7 +43,9 @@ export default function Restore() {
     setProcessing(true);
     setResult(null);
     try {
+      setUploading(true);
       const inputFileID = await uploadImage(image.filePath);
+      setUploading(false);
       const data = await generateEdit(inputFileID, 'restore');
       const first = data.results?.[0];
       if (!first) throw new Error('未返回图片');
@@ -43,6 +57,7 @@ export default function Restore() {
       const msg = err instanceof Error ? err.message : '修复失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
     } finally {
+      setUploading(false);
       setProcessing(false);
     }
   };
@@ -86,14 +101,18 @@ export default function Restore() {
         )}
       </View>
 
-      {/* 结果对比：修复中显示占位动画 */}
+      {/* 结果对比：修复中显示占位动画（上传/修复分阶段文案） */}
       {(result || processing) && image && (
-        <View className="card">
+        <View className="card" id="restore-result">
           <Text className="card__label">修复结果</Text>
           {processing ? (
             <ProcessPlaceholder
-              title="AI 正在修复照片…"
-              desc="划痕修复与清晰度增强需要十几秒，请勿退出页面"
+              title={uploading ? '图片上传中…' : 'AI 正在修复照片…'}
+              desc={
+                uploading
+                  ? '大图上传需要几秒，请保持网络畅通'
+                  : '划痕修复与清晰度增强需要十几秒，请勿退出页面'
+              }
             />
           ) : (
             result && (

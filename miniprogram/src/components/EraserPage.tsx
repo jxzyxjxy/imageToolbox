@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { generateEdit } from '../api/client';
@@ -34,8 +34,20 @@ export default function EraserPage({
   const [image, setImage] = useState<ChosenImage | null>(null);
   const [brushSize, setBrushSize] = useState(24);
   const [processing, setProcessing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<ResultItem | null>(null);
   const brushRef = useRef<BrushCanvasHandle>(null);
+
+  // 处理开始时自动滚动到结果区（占位区渲染后延迟一拍再滚）
+  useEffect(() => {
+    if (processing && !result) {
+      const t = setTimeout(() => {
+        Taro.pageScrollTo({ selector: '#eraser-result', duration: 250 }).catch(() => {});
+      }, 120);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processing]);
 
   const pickImage = async () => {
     try {
@@ -63,7 +75,9 @@ export default function EraserPage({
       const composed = await brushRef.current.getComposedFile();
       if (!composed) throw new Error('蒙版合成失败');
 
+      setUploading(true);
       const inputFileID = await uploadImage(composed);
+      setUploading(false);
       const data = await generateEdit(inputFileID, mode);
       const first = data.results?.[0];
       if (!first) throw new Error('未返回图片');
@@ -75,6 +89,7 @@ export default function EraserPage({
       const msg = err instanceof Error ? err.message : '处理失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
     } finally {
+      setUploading(false);
       setProcessing(false);
     }
   };
@@ -154,14 +169,18 @@ export default function EraserPage({
         </View>
       )}
 
-      {/* 结果：处理中显示占位动画 */}
+      {/* 结果：处理中显示占位动画（上传/生成分阶段文案） */}
       {(result || processing) && (
-        <View className="card">
+        <View className="card" id="eraser-result">
           <Text className="card__label">处理结果</Text>
           {processing ? (
             <ProcessPlaceholder
-              title="AI 正在处理，请稍候…"
-              desc="智能识别与填补还原需要十几秒，请勿退出页面"
+              title={uploading ? '图片上传中…' : 'AI 正在处理，请稍候…'}
+              desc={
+                uploading
+                  ? '大图上传需要几秒，请保持网络畅通'
+                  : '智能识别与填补还原需要十几秒，请勿退出页面'
+              }
             />
           ) : (
             result && (

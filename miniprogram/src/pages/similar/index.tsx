@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Image, Input, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { generateSimilar } from '../../api/client';
@@ -35,7 +35,18 @@ export default function Similar() {
   const [similarity, setSimilarity] = useState(70);
   const [count, setCount] = useState(1);
   const [generating, setGenerating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<ResultItem[]>([]);
+
+  // 生成开始时自动滚动到结果区（占位区渲染后延迟一拍再滚）
+  useEffect(() => {
+    if (generating) {
+      const t = setTimeout(() => {
+        Taro.pageScrollTo({ selector: '#similar-result', duration: 250 }).catch(() => {});
+      }, 120);
+      return () => clearTimeout(t);
+    }
+  }, [generating]);
 
   const pickImage = async () => {
     try {
@@ -71,7 +82,9 @@ export default function Similar() {
     setResults([]);
     try {
       // 1) 图片上传云存储（避免 callFunction 1MB 载荷限制）
+      setUploading(true);
       const inputFileID = await uploadImage(image.filePath);
+      setUploading(false);
       // 2) 云函数生图
       const data = await generateSimilar(inputFileID, {
         width: w,
@@ -93,6 +106,7 @@ export default function Similar() {
       const msg = err instanceof Error ? err.message : '生成失败，请重试';
       Taro.showToast({ title: msg.slice(0, 28), icon: 'none', duration: 3000 });
     } finally {
+      setUploading(false);
       setGenerating(false);
     }
   };
@@ -251,16 +265,20 @@ export default function Similar() {
         </View>
       </View>
 
-      {/* 结果：生成中显示占位动画 */}
+      {/* 结果：生成中显示占位动画（上传/生成分阶段文案） */}
       {(results.length > 0 || generating) && (
-        <View className="card">
+        <View className="card" id="similar-result">
           <Text className="card__label">
             {generating ? '生成结果' : '生成结果（点击预览，长按无效请用按钮保存）'}
           </Text>
           {generating ? (
             <ProcessPlaceholder
-              title="AI 正在生成相似图…"
-              desc={`本次生成 ${count} 张，大模型出图需要 20~40 秒，请勿退出页面`}
+              title={uploading ? '图片上传中…' : 'AI 正在生成相似图…'}
+              desc={
+                uploading
+                  ? '大图上传需要几秒，请保持网络畅通'
+                  : `本次生成 ${count} 张，大模型出图需要 20~40 秒，请勿退出页面`
+              }
             />
           ) : (
             <View className={`results ${results.length === 1 ? 'results--single' : ''}`}>

@@ -162,6 +162,7 @@ export default function IdPhoto() {
   // AI 分割结果（透明背景人像临时文件），存在时跳过本地泛洪抠图
   const [aiSeg, setAiSeg] = useState<string | null>(null);
   const [segmenting, setSegmenting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 预处理人像缓存：键含模式+容差，背景色/规格微调时直接复用，不重复抠图
   const prepRef = useRef<{
@@ -271,9 +272,12 @@ export default function IdPhoto() {
 
       // 1. 优先：云函数 AI 人像分割（发丝级，适配复杂背景）
       setSegmenting(true);
-      setNote('AI 抠图中，复杂背景也能自动去除…');
+      setUploading(true);
+      setNote('图片上传中…');
       try {
         const inputFileID = await uploadImage(chosen.filePath);
+        setUploading(false);
+        setNote('AI 抠图中，复杂背景也能自动去除…');
         const res = await segmentImage(inputFileID);
         if (!res.fileID) throw new Error(res.error || 'AI 抠图失败');
         const segPath = await downloadTemp(res.fileID);
@@ -283,6 +287,7 @@ export default function IdPhoto() {
         await generate(chosen, refColor, 16, bgColor, spec, segPath);
         return;
       } catch {
+        setUploading(false);
         setSegmenting(false);
         setNote('AI 抠图不可用，已切换本地抠图模式');
       }
@@ -437,12 +442,18 @@ export default function IdPhoto() {
               <View className="photo photo--placeholder">
                 <View className="spinner spinner--lg" />
                 <Text className="placeholder__title">
-                  {segmenting ? 'AI 正在精细抠图…' : '正在生成证件照…'}
+                  {uploading
+                    ? '图片上传中…'
+                    : segmenting
+                      ? 'AI 正在精细抠图…'
+                      : '正在生成证件照…'}
                 </Text>
                 <Text className="placeholder__desc">
-                  {segmenting
-                    ? '发丝级分割需要几秒，请勿退出页面'
-                    : '正在合成背景与构图…'}
+                  {uploading
+                    ? '大图上传需要几秒，请保持网络畅通'
+                    : segmenting
+                      ? '发丝级分割需要几秒，请勿退出页面'
+                      : '正在合成背景与构图…'}
                 </Text>
               </View>
             </View>

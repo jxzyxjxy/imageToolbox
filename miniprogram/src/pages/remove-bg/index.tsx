@@ -43,7 +43,19 @@ export default function RemoveBg() {
   // AI 分割结果（透明背景临时文件），存在时跳过本地泛洪抠图
   const [aiSeg, setAiSeg] = useState<string | null>(null);
   const [segmenting, setSegmenting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 抠图开始时自动滚动到结果区（占位区渲染后延迟一拍再滚）
+  useEffect(() => {
+    if ((segmenting || busy) && !result) {
+      const t = setTimeout(() => {
+        Taro.pageScrollTo({ selector: '#rmbg-result', duration: 250 }).catch(() => {});
+      }, 120);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmenting, busy]);
 
   const runCutout = useCallback(
     async (
@@ -93,9 +105,12 @@ export default function RemoveBg() {
 
       // 1. 优先：云函数 AI 主体分割（发丝级，适配复杂背景）
       setSegmenting(true);
-      setNote('AI 抠图中，复杂背景也能自动去除…');
+      setUploading(true);
+      setNote('图片上传中…');
       try {
         const inputFileID = await uploadImage(chosen.filePath);
+        setUploading(false);
+        setNote('AI 抠图中，复杂背景也能自动去除…');
         const res = await segmentImage(inputFileID);
         if (!res.fileID) throw new Error(res.error || 'AI 抠图失败');
         const segPath = await downloadTemp(res.fileID);
@@ -105,6 +120,7 @@ export default function RemoveBg() {
         await runCutout(chosen, refColor, 16, segPath);
         return;
       } catch {
+        setUploading(false);
         setSegmenting(false);
         setNote('AI 抠图不可用，已切换本地模式');
       }
@@ -182,17 +198,25 @@ export default function RemoveBg() {
         </View>
       )}
 
-      {/* 结果：AI 抠图/本地处理中显示占位动画 */}
+      {/* 结果：AI 抠图/本地处理中显示占位动画（上传/抠图分阶段文案） */}
       {(result || segmenting || busy) && image && (
-        <View className="card">
+        <View className="card" id="rmbg-result">
           <Text className="card__label">抠图结果</Text>
           {segmenting || (!result && busy) ? (
             <ProcessPlaceholder
-              title={segmenting ? 'AI 正在精细抠图…' : '正在抠图…'}
+              title={
+                uploading
+                  ? '图片上传中…'
+                  : segmenting
+                    ? 'AI 正在精细抠图…'
+                    : '正在抠图…'
+              }
               desc={
-                segmenting
-                  ? '发丝级分割需要几秒钟，请勿退出页面'
-                  : '本地处理中，请稍候'
+                uploading
+                  ? '大图上传需要几秒，请保持网络畅通'
+                  : segmenting
+                    ? '发丝级分割需要几秒钟，请勿退出页面'
+                    : '本地处理中，请稍候'
               }
             />
           ) : (
