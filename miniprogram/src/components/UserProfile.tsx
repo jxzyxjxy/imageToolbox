@@ -67,23 +67,6 @@ export default function UserProfile() {
     }
   };
 
-  /** 一键登录：静默建档，头像昵称用默认「微信用户」 */
-  const doLogin = async () => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const p = await mpLogin();
-      if (!p) throw new Error('login failed');
-      applyProfile(p);
-      setConfirmOpen(false);
-      Taro.showToast({ title: '登录成功', icon: 'success' });
-    } catch {
-      Taro.showToast({ title: '登录失败，请重试', icon: 'none' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const onChooseAvatar = (e: any) => {
     const path: string = e.detail?.avatarUrl || '';
     if (path) {
@@ -93,13 +76,11 @@ export default function UserProfile() {
   };
 
   /** 保存资料（昵称缺省用「微信用户」）；nicknameOverride 用于失焦自动提交 */
+  /** 授权提交：未登录先静默建档，再保存头像昵称 */
   const doSubmit = async (nicknameOverride?: string) => {
     if (saving) return;
     const nickname = (nicknameOverride ?? draftNickname).trim() || '微信用户';
-    if (!draftAvatar) {
-      Taro.showToast({ title: '请先点上方使用微信头像', icon: 'none' });
-      return;
-    }
+    const isLoginFlow = !profile;
     setSaving(true);
     try {
       const check = await secCheckText(nickname);
@@ -108,15 +89,21 @@ export default function UserProfile() {
         return;
       }
       let avatarFileID = draftAvatar;
-      if (!draftAvatar.startsWith('cloud://')) {
-        avatarFileID = await uploadAvatar(draftAvatar);
+      if (avatarFileID && !avatarFileID.startsWith('cloud://')) {
+        avatarFileID = await uploadAvatar(avatarFileID);
       }
-      const updated = await updateProfile(nickname, avatarFileID);
+      if (!profile) {
+        const logged = await mpLogin();
+        if (!logged) throw new Error('login failed');
+        applyProfile(logged);
+      }
+      const updated = await updateProfile(nickname, avatarFileID || profile?.avatarFileID || '');
       applyProfile(updated);
+      setConfirmOpen(false);
       setOpen(false);
-      Taro.showToast({ title: '资料已更新', icon: 'success' });
+      Taro.showToast({ title: isLoginFlow ? '登录成功' : '已保存', icon: 'success' });
     } catch (e: any) {
-      Taro.showToast({ title: e?.message || '保存失败，请重试', icon: 'none' });
+      Taro.showToast({ title: e?.message || '登录失败，请重试', icon: 'none' });
     } finally {
       setSaving(false);
     }
@@ -137,25 +124,43 @@ export default function UserProfile() {
         {profile && profile.avatarFileID ? (
           <Image className="up-entry__avatar" src={profile.avatarFileID} mode="aspectFill" />
         ) : (
-          <View className="up-entry__fallback"><Text className="up-entry__fallback-icon">👤</Text></View>
+          <View className="up-entry__fallback"><Text className="up-entry__glyph">👤</Text></View>
         )}
-        <Text className="up-entry__text">{profile ? nicknameDisplay : '登录'}</Text>
       </View>
 
-      {/* 登录确认：一个按钮完成，无需填写任何信息 */}
+      {/* 微信授权卡：允许=微信头像昵称一键，也可暂不登录（游客可用） */}
       {confirmOpen && (
         <View className="up-mask" onClick={() => !saving && setConfirmOpen(false)}>
           <View className="up-card" onClick={(e) => e.stopPropagation()}>
-            <View className="up-card__close" onClick={() => setConfirmOpen(false)}>
+            <View className="up-card__close" onClick={() => !saving && setConfirmOpen(false)}>
               <Text className="up-card__close-icon">✕</Text>
             </View>
-            <Text className="up-card__title">微信一键登录</Text>
-            <Text className="up-card__desc">登录后可同步你的使用记录，无需填写任何信息</Text>
-            <Button className="up-card__save" loading={saving} disabled={saving} onClick={doLogin}>
-              {saving ? '登录中…' : '确认登录'}
+            <Button className="up-card__avatar-btn" openType="chooseAvatar" onChooseAvatar={onChooseAvatar}>
+              {draftAvatar ? (
+                <Image className="up-card__avatar-img" src={draftAvatar} mode="aspectFill" />
+              ) : (
+                <View className="up-card__avatar-placeholder">
+                  <Text className="up-card__avatar-plus">+</Text>
+                </View>
+              )}
+            </Button>
+            <Text className="up-card__title">微信授权登录</Text>
+            <Text className="up-card__desc">申请获取你的公开信息（头像、昵称）用于展示个人资料。不想提供可直接使用全部功能。</Text>
+            <Input
+              className="up-card__nick"
+              type="nickname"
+              placeholder="点此使用微信昵称"
+              value={draftNickname}
+              focus={focusNickname}
+              disabled={saving}
+              onInput={(e) => setDraftNickname(e.detail.value)}
+              onBlur={onNicknameBlur}
+            />
+            <Button className="up-card__save" loading={saving} disabled={saving} onClick={() => doSubmit()}>
+              {saving ? '授权中…' : '允许并登录'}
             </Button>
             <View className="up-card__skip" onClick={() => !saving && setConfirmOpen(false)}>
-              <Text className="up-card__skip-text">暂不登录</Text>
+              <Text className="up-card__skip-text">暂不登录，直接使用</Text>
             </View>
           </View>
         </View>
