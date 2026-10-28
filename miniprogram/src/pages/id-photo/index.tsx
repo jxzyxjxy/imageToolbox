@@ -188,7 +188,11 @@ export default function IdPhoto() {
   // 首次生成时自动滚动到结果区，让用户看到生成进度（后续微调参数不打断滚动位置）
   useEffect(() => {
     if ((segmenting || busy) && !result) {
-      Taro.pageScrollTo({ selector: '#idp-result', duration: 250 });
+      // 占位区需等本次渲染提交后才存在，延迟一拍再滚动
+      const t = setTimeout(() => {
+        Taro.pageScrollTo({ selector: '#idp-result', duration: 250 }).catch(() => {});
+      }, 120);
+      return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmenting, busy]);

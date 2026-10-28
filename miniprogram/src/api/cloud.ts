@@ -48,7 +48,11 @@ export async function callCloud<T>(name: string, data: Record<string, unknown> =
       name,
       data,
       success: (res) => resolve(res.result as T),
-      fail: (err) => reject(new Error(err.message || `云函数 ${name} 调用失败`)),
+      fail: (err) => {
+        // 打印完整错误对象（含 errCode），toast 里 errMsg 易被截断难以定位
+        console.error(`[cloud] callFunction 失败: ${name}`, JSON.stringify(err));
+        reject(new Error(err.message || `云函数 ${name} 调用失败`));
+      },
     });
   });
 }
