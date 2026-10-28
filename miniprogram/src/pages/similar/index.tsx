@@ -3,6 +3,7 @@ import { View, Text, Image, Input, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { generateSimilar } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
+import { ensurePortraitConsent } from '../../utils/consent';
 import { chooseImage, saveToAlbum, formatSize, ChosenImage } from '../../utils/image';
 import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
@@ -78,6 +79,7 @@ export default function Similar() {
       Taro.showToast({ title: '请输入有效尺寸', icon: 'none' });
       return;
     }
+    if (!(await ensurePortraitConsent())) return;
     setGenerating(true);
     setResults([]);
     try {

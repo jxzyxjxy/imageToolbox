@@ -3,6 +3,7 @@ import { View, Text, Image, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { generateEdit } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
+import { ensurePortraitConsent } from '../../utils/consent';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
@@ -40,6 +41,7 @@ export default function Restore() {
       Taro.showToast({ title: '请先选择照片', icon: 'none' });
       return;
     }
+    if (!(await ensurePortraitConsent())) return;
     setProcessing(true);
     setResult(null);
     try {

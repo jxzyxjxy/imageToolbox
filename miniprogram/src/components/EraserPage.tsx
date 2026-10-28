@@ -3,6 +3,7 @@ import { View, Text, Image, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { generateEdit } from '../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../api/cloud';
+import { ensurePortraitConsent } from '../utils/consent';
 import { chooseImage, saveToAlbum, ChosenImage } from '../utils/image';
 import { BrushCanvas, BrushCanvasHandle } from './BrushCanvas';
 import ProcessPlaceholder from './ProcessPlaceholder';
@@ -69,6 +70,7 @@ export default function EraserPage({
       Taro.showToast({ title: '请先涂抹需要消除的区域', icon: 'none' });
       return;
     }
+    if (!(await ensurePortraitConsent())) return;
     setProcessing(true);
     setResult(null);
     try {

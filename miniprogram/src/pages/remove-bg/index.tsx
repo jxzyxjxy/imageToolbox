@@ -3,6 +3,7 @@ import { View, Text, Image, Canvas, Slider, Button } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { segmentImage } from '../../api/client';
 import { uploadImage, downloadTemp } from '../../api/cloud';
+import { ensurePortraitConsent } from '../../utils/consent';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import {
   canvasToTempFile,
@@ -97,6 +98,7 @@ export default function RemoveBg() {
     try {
       const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
+      if (!(await ensurePortraitConsent())) return;
       setImage(chosen);
       setResult('');
       setTolerance(16);
