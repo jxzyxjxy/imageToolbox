@@ -79,6 +79,10 @@ export default function Compress() {
    * canvas 兜底压缩：按 EXIF 方向正确绘制，阶梯缩小尺寸，
    * 直到体积小于原图；全部失败返回 null。
    */
+  /**
+   * canvas 兜底压缩：按 EXIF 方向正确绘制，阶梯缩小尺寸，
+   * 直到体积小于原图；保底返回最小的压缩产物，仅完全失败返回 null。
+   */
   const canvasCompress = async (
     src: string,
     qualityPct: number,
@@ -91,8 +95,8 @@ export default function Compress() {
       const canvas = await getCanvas('compressCanvas');
       const ctx = canvas.getContext('2d');
       const img = await loadCanvasImage(canvas, src);
-      const scales = [1, 0.8, 0.62, 0.45, 0.33];
-      for (const s of scales) {
+
+      const renderAt = async (s: number, q: number) => {
         const dw = Math.max(1, Math.round(disp.w * s));
         const dh = Math.max(1, Math.round(disp.h * s));
         canvas.width = dw;
@@ -115,14 +119,25 @@ export default function Compress() {
           ctx.drawImage(img as never, 0, 0, dw, dh);
         }
         ctx.restore();
-        const out = await canvasToTempFile(canvas, {
-          fileType: 'jpg',
-          quality: qualityPct / 100,
-        });
+        const out = await canvasToTempFile(canvas, { fileType: 'jpg', quality: q });
         const size = await getFileSize(out);
-        if (size > 0 && size < originalSize) return { path: out, size };
+        return { path: out, size };
+      };
+
+      // 阶梯降尺寸：第一个小于原图的即返回
+      const scales = [1, 0.8, 0.62, 0.45, 0.33];
+      let best: { path: string; size: number } | null = null;
+      for (const s of scales) {
+        const r = await renderAt(s, qualityPct / 100);
+        if (r.size > 0 && r.size < originalSize) return r;
+        if (r.size > 0 && (!best || r.size < best.size)) best = r;
       }
-      return null;
+      // 极限档：更低质量 + 更小尺寸，务必给出真实压缩结果
+      const hard = await renderAt(0.25, Math.min(qualityPct, 40) / 100);
+      if (hard.size > 0 && hard.size < originalSize) return hard;
+      if (hard.size > 0 && (!best || hard.size < best.size)) best = hard;
+      // 原图本身极小/低质量时才走到这：返回压缩产物中最小的
+      return best;
     } catch (err) {
       console.error('canvasCompress failed', err);
       return null;
@@ -157,13 +172,13 @@ export default function Compress() {
       if (!out) {
         out = await canvasCompress(image.filePath, quality, image.size);
       }
-      // 3) 仍压不小 → 保留原图，绝不让"压缩"越压越大
+      // 3) canvas 彻底失败（极端情况）→ 保留原图
       if (!out) {
         out = { path: image.filePath, size: image.size, keptOriginal: true };
       }
       setResult(out);
       if (out.keptOriginal) {
-        Taro.showToast({ title: '原图已足够小，已保留原图', icon: 'none' });
+        Taro.showToast({ title: '压缩服务暂不可用，已保留原图', icon: 'none' });
       }
     } finally {
       setCompressing(false);
@@ -233,7 +248,11 @@ export default function Compress() {
                 {formatSize(result.size)}
               </Text>
               <Text className="result__cap">
-                {result.keptOriginal ? '已保留原图' : `压缩后（-${ratio}%）`}
+                {result.keptOriginal
+                  ? '已保留原图'
+                  : ratio > 0
+                    ? `压缩后（-${ratio}%）`
+                    : '压缩后'}
               </Text>
             </View>
           </View>
@@ -253,8 +272,12 @@ export default function Compress() {
         </Button>
       </View>
       <View className="footer-placeholder" />
-      {/* 隐藏画布：EXIF 方向修正与阶梯压缩兜底 */}
-      <Canvas canvasId="compressCanvas" id="compressCanvas" className="compress-canvas" />
+      {/* 隐藏画布：EXIF 方向修正与阶梯压缩兜底（必须 type="2d" 才能取到 node） */}
+      <Canvas
+        type="2d"
+        id="compressCanvas"
+        style={{ position: 'fixed', left: '-9999px', top: '-9999px', width: '16px', height: '16px' }}
+      />
     </View>
   );
 }
