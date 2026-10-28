@@ -85,7 +85,8 @@ const TOOLS: ToolItem[] = [
     icon: '🧩',
     gradient: 'linear-gradient(135deg, #a855f7, #d946ef)',
     path: '/pages/icon-splitter/index',
-    ready: true,
+    // 暂时下架锁定：置灰 + 「敬请期待」标签 + 点击 toast；恢复时改回 true 即可
+    ready: false,
   },
   {
     key: 'similar',
