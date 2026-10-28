@@ -132,7 +132,7 @@ export default function Index() {
       <View className="section">
         <Text className="section__title">全部工具</Text>
         <View className="grid">
-          {TOOLS.map((tool) => (
+          {TOOLS.filter((tool) => tool.ready).map((tool) => (
             <View
               key={tool.key}
               className={`card ${tool.ready ? '' : 'card--disabled'}`}
