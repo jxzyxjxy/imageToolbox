@@ -12,12 +12,15 @@ import {
   loadCanvasImage,
   removeBackgroundPixels,
   sampleCornerColorFromData,
+  unsharpMaskPixels,
 } from '../../utils/canvas';
 import './index.scss';
 
-/** 源图处理分辨率上限（与分割云函数一致，保证人像细节） */
-const PROC_MAX_DIM = 1920;
-/** 输出放大倍数：规格像素是 300dpi 冲印标准（如一寸 295×413），直接输出在手机上查看太糊，×4 保证清晰度 */
+/** AI 分割路径：人像合成源分辨率上限（手机原图常用 3024/4032，过高吃内存，2560 足够高清） */
+const AI_PROC_DIM = 2560;
+/** 本地兜底抠图路径：泛洪+羽化是逐像素运算，控制在 1280 保证流畅 */
+const LOCAL_PROC_DIM = 1280;
+/** 输出放大倍数：规格像素是 300dpi 冲印标准（一寸 295×413），×4 输出保证手机查看/再冲印清晰 */
 const OUTPUT_SCALE = 4;
 
 interface IdSpec {
@@ -45,11 +48,19 @@ const BG_COLORS: { name: string; value: string }[] = [
   { name: '灰', value: '#c8ccd4' },
 ];
 
+/** 预处理结果：已抠好的人像（原图全分辨率 RGB）+ 主体框，参数微调时直接复用 */
+interface PreparedSubject {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+  bbox: { x: number; y: number; w: number; h: number };
+}
+
 /** 在离屏 canvas 上采样照片四角的平均背景色（不依赖 AI） */
 async function sampleLocalCorner(
   chosen: ChosenImage,
 ): Promise<[number, number, number]> {
-  const size = fitSize(chosen.width, chosen.height, PROC_MAX_DIM);
+  const size = fitSize(chosen.width, chosen.height, LOCAL_PROC_DIM);
   const c = await getCanvas('idp-sample');
   c.width = size.w;
   c.height = size.h;
@@ -58,6 +69,85 @@ async function sampleLocalCorner(
   ctx.drawImage(img as unknown as never, 0, 0, size.w, size.h);
   const data = ctx.getImageData(0, 0, size.w, size.h).data;
   return sampleCornerColorFromData(data, size.w, size.h);
+}
+
+/**
+ * AI 路径预处理（只跑一次，参数微调时复用）：
+ * RGB 来自【原图全分辨率】（色彩/细节最丰富），alpha 轮廓来自 AI 分割结果（缩放到同尺寸对齐）。
+ * 这样最终合成是从高分辨率人像向下采样，而非把云端小图拉伸放大——这才是"高清"。
+ */
+async function prepareAiSubject(
+  original: ChosenImage,
+  segPath: string,
+): Promise<PreparedSubject> {
+  let maxDim = AI_PROC_DIM;
+  // 个别低端机 canvas 尺寸受限，失败一次后降级重试
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const size = fitSize(original.width, original.height, maxDim);
+      const canvas = await getCanvas('idp-subject');
+      canvas.width = size.w;
+      canvas.height = size.h;
+      const ctx = canvas.getContext('2d');
+
+      // 底层：原图全分辨率 RGB
+      const srcImg = await loadCanvasImage(canvas, original.filePath);
+      ctx.clearRect(0, 0, size.w, size.h);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(srcImg as unknown as never, 0, 0, size.w, size.h);
+
+      // 上层：AI 分割透明 PNG，取其 alpha 轮廓覆盖到底层
+      const segImg = await loadCanvasImage(canvas, segPath);
+      const segLayer = ctx.getImageData(0, 0, size.w, size.h); // 先拿到带原图 RGB 的缓冲
+      // 用独立 canvas 绘制同尺寸分割图以读取其 alpha
+      const segCanvas = await getCanvas('idp-seg');
+      segCanvas.width = size.w;
+      segCanvas.height = size.h;
+      const segCtx = segCanvas.getContext('2d');
+      segCtx.imageSmoothingEnabled = true;
+      segCtx.imageSmoothingQuality = 'high';
+      segCtx.drawImage(segImg as unknown as never, 0, 0, size.w, size.h);
+      const segData = segCtx.getImageData(0, 0, size.w, size.h).data;
+
+      // alpha 取分割轮廓，RGB 保留原图
+      const out = segLayer.data;
+      for (let i = 0; i < out.length; i += 4) {
+        out[i + 3] = segData[i + 3];
+      }
+      ctx.putImageData(segLayer, 0, 0);
+
+      const bbox = getSubjectBBoxFromData(out, size.w, size.h);
+      return { data: out, width: size.w, height: size.h, bbox };
+    } catch (err) {
+      if (attempt === 0) {
+        maxDim = 1600;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('AI 人像预处理失败');
+}
+
+/** 本地兜底预处理：泛洪抠图（逐像素运算，1280 内流畅），容差变化需重跑 */
+async function prepareLocalSubject(
+  chosen: ChosenImage,
+  ref: [number, number, number],
+  tol: number,
+): Promise<PreparedSubject> {
+  const size = fitSize(chosen.width, chosen.height, LOCAL_PROC_DIM);
+  const canvas = await getCanvas('idp-subject');
+  canvas.width = size.w;
+  canvas.height = size.h;
+  const ctx = canvas.getContext('2d');
+  const img = await loadCanvasImage(canvas, chosen.filePath);
+  ctx.clearRect(0, 0, size.w, size.h);
+  ctx.drawImage(img as unknown as never, 0, 0, size.w, size.h);
+  const imageData = ctx.getImageData(0, 0, size.w, size.h);
+  const bbox = removeBackgroundPixels(imageData.data, size.w, size.h, ref, tol);
+  ctx.putImageData(imageData, 0, 0);
+  return { data: imageData.data, width: size.w, height: size.h, bbox };
 }
 
 export default function IdPhoto() {
@@ -73,6 +163,66 @@ export default function IdPhoto() {
   const [aiSeg, setAiSeg] = useState<string | null>(null);
   const [segmenting, setSegmenting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 预处理人像缓存：键含模式+容差，背景色/规格微调时直接复用，不重复抠图
+  const prepRef = useRef<{
+    key: string;
+    subject: PreparedSubject | null;
+  }>({ key: '', subject: null });
+
+  /** 高清合成：从预处理的高分辨率人像【向下采样】到输出尺寸 + unsharp 锐化 */
+  const compose = useCallback(
+    async (subject: PreparedSubject, bg: string, sp: IdSpec) => {
+      const W = sp.w * OUTPUT_SCALE;
+      const H = sp.h * OUTPUT_SCALE;
+      const out = await getCanvas('idp-out');
+      out.width = W;
+      out.height = H;
+      const octx = out.getContext('2d');
+      const subjectCanvas = await getCanvas('idp-subject');
+
+      // 背景
+      octx.fillStyle = bg;
+      octx.fillRect(0, 0, W, H);
+
+      const { bbox } = subject;
+      if (bbox.w > 0 && bbox.h > 0) {
+        // 证件照构图：人像约占 82%，水平居中；底部贴底边（微超 1%，胸口自然裁切）
+        // 直接把高分辨率人像画布整体变换到输出坐标，GPU 高质量向下采样 = 真高清
+        const k = OUTPUT_SCALE;
+        const cx = bbox.x + bbox.w / 2;
+        const scale = Math.max(sp.w / bbox.w, sp.h / bbox.h) * 0.82;
+        octx.save();
+        octx.imageSmoothingEnabled = true;
+        octx.imageSmoothingQuality = 'high';
+        octx.translate(W / 2 - cx * scale * k, H * 1.01 - (bbox.y + bbox.h) * scale * k);
+        octx.scale(scale * k, scale * k);
+        octx.drawImage(subjectCanvas as unknown as never, 0, 0);
+        octx.restore();
+      } else {
+        // 兜底：contain 等比适配，绝不拉伸变形
+        const scale = Math.min(W / subject.width, H / subject.height);
+        const dw = subject.width * scale;
+        const dh = subject.height * scale;
+        octx.imageSmoothingEnabled = true;
+        octx.imageSmoothingQuality = 'high';
+        octx.drawImage(
+          subjectCanvas as unknown as never,
+          (W - dw) / 2,
+          (H - dh) / 2,
+          dw,
+          dh,
+        );
+      }
+
+      // 下采样后做一次轻锐化，补偿边缘（发丝/五官），提升真实清晰感（纯色背景不受影响）
+      const imageData = octx.getImageData(0, 0, W, H);
+      unsharpMaskPixels(imageData.data, W, H, 3);
+      octx.putImageData(imageData, 0, 0);
+
+      return canvasToTempFile(out, { fileType: 'jpg', quality: 0.95 });
+    },
+    [],
+  );
 
   const generate = useCallback(
     async (
@@ -85,65 +235,27 @@ export default function IdPhoto() {
     ) => {
       setBusy(true);
       try {
-        // 1. 得到透明人像画布：AI 分割结果 或 本地泛洪抠图
-        const size = fitSize(img.width, img.height, PROC_MAX_DIM);
-        const subject = await getCanvas('idp-subject');
-        subject.width = size.w;
-        subject.height = size.h;
-        const sctx = subject.getContext('2d');
-        const bitmap = await loadCanvasImage(subject, seg || img.filePath);
-        sctx.clearRect(0, 0, size.w, size.h);
-        sctx.drawImage(bitmap as unknown as never, 0, 0, size.w, size.h);
-        const imageData = sctx.getImageData(0, 0, size.w, size.h);
-        const bbox = seg
-          ? getSubjectBBoxFromData(imageData.data, size.w, size.h)
-          : removeBackgroundPixels(imageData.data, size.w, size.h, ref, tol);
-        sctx.putImageData(imageData, 0, 0);
-
-        // 2. 合成证件照（人像 82% + 头顶留白 10%，与 H5 一致）
-        const out = await getCanvas('idp-out');
-        out.width = sp.w * OUTPUT_SCALE;
-        out.height = sp.h * OUTPUT_SCALE;
-        const octx = out.getContext('2d');
-        // 坐标系放大 OUTPUT_SCALE 倍，后续合成坐标仍按规格尺寸计算，逻辑不变
-        octx.scale(OUTPUT_SCALE, OUTPUT_SCALE);
-        octx.fillStyle = bg;
-        octx.fillRect(0, 0, sp.w, sp.h);
-
-        if (bbox.w > 0 && bbox.h > 0) {
-          // 证件照构图：整图等比缩放，人像约占 82%，水平居中；
-          // 人物底部贴照片底边（微超 1%，胸口自然裁切），头顶留白自然形成，避免底部悬空
-          const cx = bbox.x + bbox.w / 2;
-          const scale = Math.max(sp.w / bbox.w, sp.h / bbox.h) * 0.82;
-          const dw = size.w * scale;
-          const dh = size.h * scale;
-          const dx = sp.w / 2 - cx * scale;
-          const dy = sp.h * 1.01 - (bbox.y + bbox.h) * scale;
-          octx.drawImage(subject as unknown as never, dx, dy, dw, dh);
-        } else {
-          // 兜底：contain 等比适配，绝不拉伸变形
-          const scale = Math.min(sp.w / size.w, sp.h / size.h);
-          const dw = size.w * scale;
-          const dh = size.h * scale;
-          octx.drawImage(
-            subject as unknown as never,
-            (sp.w - dw) / 2,
-            (sp.h - dh) / 2,
-            dw,
-            dh,
-          );
+        // 1. 预处理透明人像（仅模式/容差变化时重跑；背景色与规格变化走缓存）
+        const key = seg ? `ai:${seg}` : `local:${tol}`;
+        let subject = prepRef.current.subject;
+        if (prepRef.current.key !== key || !subject) {
+          subject = seg
+            ? await prepareAiSubject(img, seg)
+            : await prepareLocalSubject(img, ref, tol);
+          prepRef.current = { key, subject };
         }
-
-        const path = await canvasToTempFile(out, { fileType: 'jpg', quality: 0.95 });
+        // 2. 高清合成
+        const path = await compose(subject, bg, sp);
         setResult(path);
       } catch (err) {
         console.error(err);
+        prepRef.current = { key: '', subject: null };
         Taro.showToast({ title: '生成失败，请重试', icon: 'none' });
       } finally {
         setBusy(false);
       }
     },
-    [],
+    [compose],
   );
 
   const pickImage = async () => {
@@ -155,6 +267,7 @@ export default function IdPhoto() {
       setTolerance(16);
       setNote('');
       setAiSeg(null);
+      prepRef.current = { key: '', subject: null };
 
       // 1. 优先：云函数 AI 人像分割（发丝级，适配复杂背景）
       setSegmenting(true);
@@ -363,6 +476,11 @@ export default function IdPhoto() {
       <Canvas
         type="2d"
         id="idp-subject"
+        style={{ position: 'fixed', left: '-9999px', top: '-9999px', width: '10px', height: '10px' }}
+      />
+      <Canvas
+        type="2d"
+        id="idp-seg"
         style={{ position: 'fixed', left: '-9999px', top: '-9999px', width: '10px', height: '10px' }}
       />
       <Canvas

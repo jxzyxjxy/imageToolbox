@@ -28,6 +28,7 @@ export interface MiniCanvasContext2D {
   globalAlpha: number;
   globalCompositeOperation: string;
   imageSmoothingEnabled: boolean;
+  imageSmoothingQuality?: 'low' | 'medium' | 'high';
   drawImage: (...args: unknown[]) => void;
   getImageData: (x: number, y: number, w: number, h: number) => MiniImageData;
   putImageData: (data: MiniImageData, x: number, y: number) => void;
