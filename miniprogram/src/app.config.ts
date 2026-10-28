@@ -11,6 +11,8 @@ export default defineAppConfig({
     'pages/upscale/index',
     'pages/icon-splitter/index',
   ],
+  // 组件按需注入：减小启动包体积，发布检测要求
+  lazyCodeLoading: 'requiredComponents',
   window: {
     backgroundTextStyle: 'light',
     backgroundColor: '#f5f6fa',
