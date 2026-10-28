@@ -1,4 +1,4 @@
 export default definePageConfig({
-  navigationBarTitleText: '图片工具箱',
+  navigationBarTitleText: '青芽影图',
   navigationStyle: 'custom',
 });

@@ -15,7 +15,7 @@ export default defineAppConfig({
     backgroundTextStyle: 'light',
     backgroundColor: '#f5f6fa',
     navigationBarBackgroundColor: '#6366f1',
-    navigationBarTitleText: '图片工具箱',
+    navigationBarTitleText: '青芽影图',
     navigationBarTextStyle: 'white',
   },
 });

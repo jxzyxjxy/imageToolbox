@@ -54,7 +54,7 @@ export async function generateSimilar(
   inputFileID: string,
   opts: SimilarOptions = {},
 ): Promise<SimilarResponse> {
-  return callTool<SimilarResponse>('generate', {
+  return callTool<SimilarResponse>('yt_generate', {
     tool: 'similar',
     fileID: inputFileID,
     ...opts,
@@ -69,7 +69,7 @@ export async function generateEdit(
   inputFileID: string,
   mode: EditMode,
 ): Promise<SimilarResponse> {
-  return callTool<SimilarResponse>('generate', {
+  return callTool<SimilarResponse>('yt_generate', {
     tool: mode,
     fileID: inputFileID,
   });
@@ -88,7 +88,7 @@ export interface SegmentResponse {
 }
 
 export async function segmentImage(inputFileID: string): Promise<SegmentResponse> {
-  return callTool<SegmentResponse>('segment', { fileID: inputFileID });
+  return callTool<SegmentResponse>('yt_segment', { fileID: inputFileID });
 }
 
 /* ---------- 图标拆分 ---------- */
@@ -128,7 +128,7 @@ export async function splitIcons(
   inputFileID: string,
   opts: SplitIconsOptions = {},
 ): Promise<SplitIconsResponse> {
-  return callTool<SplitIconsResponse>('split-icons', {
+  return callTool<SplitIconsResponse>('yt_split_icons', {
     fileID: inputFileID,
     ...opts,
   });

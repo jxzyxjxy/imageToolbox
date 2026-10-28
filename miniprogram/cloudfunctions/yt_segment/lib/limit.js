@@ -40,7 +40,7 @@ async function consume(db, openid, tool) {
   const limit = QUOTA[tool];
   if (!limit) return { ok: false, error: '未知工具: ' + tool };
   const _ = db.command;
-  const col = db.collection('usage');
+  const col = db.collection('yt_usage');
   const id = `${openid}_${today()}_${tool}`;
 
   const inc = await col

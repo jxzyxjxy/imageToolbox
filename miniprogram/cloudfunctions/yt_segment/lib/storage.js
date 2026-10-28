@@ -2,7 +2,7 @@
 
 function resultPath(openid, ext) {
   const rand = Math.random().toString(36).slice(2, 8);
-  return `results/${String(openid).slice(-8)}/${Date.now()}_${rand}.${ext}`;
+  return `yt/results/${String(openid).slice(-8)}/${Date.now()}_${rand}.${ext}`;
 }
 
 /** 下载云存储文件，返回 Buffer */
@@ -15,9 +15,9 @@ async function download(cloud, fileID) {
 async function register(cloud, fileID, kind, openid) {
   try {
     const db = cloud.database();
-    const existed = await db.collection('storage_files').where({ fileID }).limit(1).get();
+    const existed = await db.collection('yt_storage_files').where({ fileID }).limit(1).get();
     if (existed.data && existed.data.length > 0) return;
-    await db.collection('storage_files').add({
+    await db.collection('yt_storage_files').add({
       data: { fileID, kind, openid: openid || '', createdAt: new Date() },
     });
   } catch (e) {

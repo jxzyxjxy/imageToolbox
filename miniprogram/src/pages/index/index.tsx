@@ -122,7 +122,7 @@ export default function Index() {
         <View className="hero__logo">
           <Text className="hero__logo-icon">🖼️</Text>
         </View>
-        <Text className="hero__title">图片工具箱</Text>
+        <Text className="hero__title">青芽影图</Text>
         <Text className="hero__subtitle">AI 生图 · 压缩 · 修复，一站式图片处理</Text>
       </View>
 

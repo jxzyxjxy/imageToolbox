@@ -1,5 +1,5 @@
 {
-  "name": "split-icons",
+  "name": "yt_split_icons",
   "version": "1.0.0",
   "description": "图标拆分：连通域切割 + 透明化 + 高清放大 + 雪碧图合成（纯 JS）",
   "main": "index.js",

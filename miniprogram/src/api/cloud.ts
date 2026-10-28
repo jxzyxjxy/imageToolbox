@@ -65,7 +65,7 @@ export interface UserProfile {
 /** 启动登录：openid 落库并返回档案（失败静默返回 null，不阻断使用） */
 export async function mpLogin(): Promise<UserProfile | null> {
   try {
-    const res = await callCloud<UserProfile & { error?: string }>('login');
+    const res = await callCloud<UserProfile & { error?: string }>('yt_login');
     if (res.error || !res.openid) return null;
     return res;
   } catch (e) {
@@ -76,7 +76,7 @@ export async function mpLogin(): Promise<UserProfile | null> {
 
 /** 保存头像昵称（头像先经 uploadAvatar 上传云存储） */
 export async function updateProfile(nickname: string, avatarFileID: string): Promise<UserProfile> {
-  const res = await callCloud<UserProfile & { error?: string }>('login', {
+  const res = await callCloud<UserProfile & { error?: string }>('yt_login', {
     action: 'updateProfile',
     nickname,
     avatarFileID,
@@ -85,12 +85,12 @@ export async function updateProfile(nickname: string, avatarFileID: string): Pro
   return res;
 }
 
-/** 上传头像到云存储 avatars/ 目录，返回 fileID */
+/** 上传头像到云存储 yt/avatars/ 目录，返回 fileID */
 export async function uploadAvatar(filePath: string): Promise<string> {
   const cloud = getWxCloud();
   if (!cloud) throw new Error('云开发不可用');
   const ext = (filePath.match(/\.(\w+)$/)?.[1] || 'png').toLowerCase();
-  const cloudPath = `avatars/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const cloudPath = `yt/avatars/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   return new Promise<string>((resolve, reject) => {
     cloud.uploadFile({
       cloudPath,
@@ -109,7 +109,7 @@ interface SecCheckResult {
 /** 文本内容安全检测（昵称等 UGC 文案） */
 export async function secCheckText(text: string): Promise<SecCheckResult> {
   try {
-    return await callCloud<SecCheckResult>('sec-check', { text });
+    return await callCloud<SecCheckResult>('yt_sec_check', { text });
   } catch (e) {
     console.warn('[cloud] sec-check 不可用，已放行:', e);
     return { pass: true };
@@ -119,7 +119,7 @@ export async function secCheckText(text: string): Promise<SecCheckResult> {
 /** 图片内容安全检测（传入压缩小图的 base64） */
 export async function secCheckImage(base64: string): Promise<SecCheckResult> {
   try {
-    return await callCloud<SecCheckResult>('sec-check', { imageBase64: base64 });
+    return await callCloud<SecCheckResult>('yt_sec_check', { imageBase64: base64 });
   } catch (e) {
     // 云函数未部署/环境未配置时放行并告警，避免阻断开发调试
     console.warn('[cloud] sec-check 不可用，已放行:', e);
@@ -134,7 +134,7 @@ export async function uploadImage(filePath: string): Promise<string> {
     throw new Error('云开发不可用，请检查 appid 与云环境配置');
   }
   const ext = (filePath.match(/\.(\w+)$/)?.[1] || 'png').toLowerCase();
-  const cloudPath = `inputs/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const cloudPath = `yt/inputs/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   return new Promise<string>((resolve, reject) => {
     cloud.uploadFile({
       cloudPath,

@@ -26,7 +26,7 @@ function kindOf(fileID) {
 
 exports.main = async (event = {}) => {
   const db = cloud.database();
-  const col = db.collection('storage_files');
+  const col = db.collection('yt_storage_files');
   const now = Date.now();
 
   // 查全部已登记文件，本地按种类保留期过滤（集合量 = 最近 7 天产物，规模可控）

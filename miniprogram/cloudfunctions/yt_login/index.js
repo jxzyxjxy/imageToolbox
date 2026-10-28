@@ -18,7 +18,7 @@ exports.main = async (event) => {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return { error: '获取用户身份失败' };
 
-  const users = db.collection('users');
+  const users = db.collection('yt_users');
   try {
     const exist = await users.where({ openid: OPENID }).limit(1).get();
     let doc = exist.data[0];
