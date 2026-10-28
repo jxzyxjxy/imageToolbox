@@ -187,3 +187,14 @@
 .footer-placeholder {
   height: 180rpx;
 }
+
+/* 隐藏画布：EXIF 方向修正与阶梯压缩兜底 */
+.compress-canvas {
+  position: fixed;
+  left: -2000px;
+  top: 0;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  pointer-events: none;
+}
