@@ -2,6 +2,7 @@ import { View, Text, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import UserProfile from '@/components/UserProfile';
 import { maybeShowInterstitialAd } from '@/utils/ad';
+import { SHOW_LOGIN_ENTRY } from '@/config';
 import './index.scss';
 
 interface ToolItem {
@@ -119,7 +120,7 @@ export default function Index() {
       <View className="hero">
         <View className="hero__glow hero__glow--tr" />
         <View className="hero__glow hero__glow--bl" />
-        <UserProfile />
+        {SHOW_LOGIN_ENTRY && <UserProfile />}
         <View className="hero__logo">
           <Text className="hero__logo-icon">🖼️</Text>
         </View>

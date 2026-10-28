@@ -15,3 +15,9 @@ export const CLOUD_ENV = 'cloud1-d6ga4bn9we9abebf8';
  * 留空则广告自动停用（开发期保持为空即可）。
  */
 export const AD_UNIT_INTERSTITIAL = '';
+
+/**
+ * 登录入口开关。false 时首页隐藏头像/登录入口与授权面板，
+ * 全部功能游客可用。后续恢复登录功能改为 true 即可（UserProfile 组件保留）。
+ */
+export const SHOW_LOGIN_ENTRY = false;
