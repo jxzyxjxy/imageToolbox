@@ -25,3 +25,12 @@ button {
     border: none;
   }
 }
+
+/* AI 生成内容显著标注（深度合成类目合规要求） */
+.ai-mark {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #b45309;
+}

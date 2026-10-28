@@ -271,6 +271,7 @@ export default function Similar() {
           <Text className="card__label">
             {generating ? '生成结果' : '生成结果（点击预览，长按无效请用按钮保存）'}
           </Text>
+          <Text className="ai-mark">⚠️ 本结果由 AI 生成，仅供学习参考，请注意甄别</Text>
           {generating ? (
             <ProcessPlaceholder
               title={uploading ? '图片上传中…' : 'AI 正在生成相似图…'}

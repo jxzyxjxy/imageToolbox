@@ -425,6 +425,7 @@ export default function IdPhoto() {
           <Text className="card__label">
             {spec.name} {spec.w * OUTPUT_SCALE}×{spec.h * OUTPUT_SCALE}px
           </Text>
+          <Text className="ai-mark">⚠️ 本结果经 AI 处理，仅供学习参考，请注意甄别</Text>
 
           {result && !(segmenting && !aiSeg) ? (
             <View className="photo-wrap">
