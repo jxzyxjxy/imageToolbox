@@ -79,16 +79,6 @@ const TOOLS: ToolItem[] = [
     ready: true,
   },
   {
-    key: 'icon-splitter',
-    name: '图标拆分',
-    desc: '上传图标合集，拆成单张透明 PNG',
-    icon: '🧩',
-    gradient: 'linear-gradient(135deg, #a855f7, #d946ef)',
-    path: '/pages/icon-splitter/index',
-    // 暂时下架锁定：置灰 + 「敬请期待」标签 + 点击 toast；恢复时改回 true 即可
-    ready: false,
-  },
-  {
     key: 'similar',
     name: '生成相似图',
     desc: '参考原图风格与构图，生成多张相似图片',
@@ -96,6 +86,16 @@ const TOOLS: ToolItem[] = [
     gradient: 'linear-gradient(135deg, #d946ef, #a855f7)',
     path: '/pages/similar/index',
     ready: true,
+  },
+  // 未就绪的工具沉底展示：置灰 + 「敬请期待」标签 + 点击 toast；恢复时改回 true 并挪回上方即可
+  {
+    key: 'icon-splitter',
+    name: '图标拆分',
+    desc: '上传图标合集，拆成单张透明 PNG',
+    icon: '🧩',
+    gradient: 'linear-gradient(135deg, #a855f7, #d946ef)',
+    path: '/pages/icon-splitter/index',
+    ready: false,
   },
 ];
 
