@@ -204,7 +204,7 @@ export default function RemoveBg() {
       {(result || segmenting || busy) && image && (
         <View className="card" id="rmbg-result">
           <Text className="card__label">抠图结果</Text>
-          <Text className="ai-mark">⚠️ 本结果经 AI 处理，仅供学习参考，请注意甄别</Text>
+          <Text className="ai-mark">AI生成</Text>
           {segmenting || (!result && busy) ? (
             <ProcessPlaceholder
               title={

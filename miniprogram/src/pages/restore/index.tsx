@@ -107,7 +107,7 @@ export default function Restore() {
       {(result || processing) && image && (
         <View className="card" id="restore-result">
           <Text className="card__label">修复结果</Text>
-          <Text className="ai-mark">⚠️ 本结果由 AI 生成，仅供学习参考，请注意甄别</Text>
+          <Text className="ai-mark">AI生成</Text>
           {processing ? (
             <ProcessPlaceholder
               title={uploading ? '图片上传中…' : 'AI 正在修复照片…'}
