@@ -35,6 +35,15 @@ exports.main = async (event) => {
       const avatarFileID = typeof event.avatarFileID === 'string' ? event.avatarFileID : '';
       if (!nickname) return { error: '昵称不能为空' };
       if (avatarFileID && !avatarFileID.startsWith('cloud://')) return { error: '头像地址无效' };
+      // 换头像后删除旧头像文件，避免 yt/avatars/ 永久堆积
+      const oldAvatar = doc.avatarFileID;
+      if (oldAvatar && oldAvatar.startsWith('cloud://') && oldAvatar.includes('/avatars/') && oldAvatar !== avatarFileID) {
+        try {
+          await cloud.deleteFile({ fileList: [oldAvatar] });
+        } catch (e) {
+          console.warn('[login] 旧头像删除失败（不影响更新）:', oldAvatar);
+        }
+      }
       await users.doc(doc._id).update({
         data: { nickname, avatarFileID, updatedAt: Date.now() },
       });

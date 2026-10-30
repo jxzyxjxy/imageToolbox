@@ -1,7 +1,7 @@
 /**
  * 定时清理云存储临时文件
  * - 触发：config.json 定时触发器，每天凌晨执行
- * - 数据源：storage_files 集合（inputs/results 文件上传后登记）
+ * - 数据源：yt_storage_files 集合（inputs/results 文件上传后登记）
  * - 策略：inputs 保留 1 天，results 保留 7 天，avatars 不登记不清理
  * - 兜底：storage_files 中 fileID 已被手动删除的记录一并清除
  * 手动触发（event = { all: true }）时删除全部已登记的临时文件，便于一次性清空。
