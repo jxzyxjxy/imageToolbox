@@ -98,7 +98,10 @@ export default function RemoveBg() {
     try {
       const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
-      if (!(await ensurePortraitConsent())) return;
+      if (!(await ensurePortraitConsent())) {
+        Taro.showToast({ title: '未同意授权，本次已取消', icon: 'none' });
+        return;
+      }
       setImage(chosen);
       setResult('');
       setTolerance(16);

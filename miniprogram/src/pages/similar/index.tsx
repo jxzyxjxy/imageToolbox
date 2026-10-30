@@ -79,7 +79,10 @@ export default function Similar() {
       Taro.showToast({ title: '请输入有效尺寸', icon: 'none' });
       return;
     }
-    if (!(await ensurePortraitConsent())) return;
+    if (!(await ensurePortraitConsent())) {
+      Taro.showToast({ title: '未同意授权，本次已取消', icon: 'none' });
+      return;
+    }
     setGenerating(true);
     setResults([]);
     try {

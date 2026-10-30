@@ -79,6 +79,7 @@ export async function chooseImage(
       ? 'image/jpeg'
       : 'image/png';
   const info = await Taro.getImageInfo({ src: filePath });
+  console.log('[img] 图片信息:', `${info.width}x${info.height}`, 'chooseImage 完成');
   return {
     filePath,
     width: info.width,

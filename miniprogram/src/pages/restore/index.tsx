@@ -41,7 +41,10 @@ export default function Restore() {
       Taro.showToast({ title: '请先选择照片', icon: 'none' });
       return;
     }
-    if (!(await ensurePortraitConsent())) return;
+    if (!(await ensurePortraitConsent())) {
+      Taro.showToast({ title: '未同意授权，本次已取消', icon: 'none' });
+      return;
+    }
     setProcessing(true);
     setResult(null);
     try {
