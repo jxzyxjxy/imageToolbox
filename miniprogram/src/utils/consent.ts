@@ -44,7 +44,7 @@ export async function ensurePortraitConsent(): Promise<boolean> {
       title: '肖像权与个人信息授权声明',
       content:
         '请确认您上传的图片为您本人照片，或已获得肖像权人的合法授权。严禁上传、处理他人（含公众人物）的人脸照片，严禁将生成内容用于非法用途。继续使用即表示您承诺对上传内容拥有合法权利，违规使用产生的法律责任由您自行承担。',
-      confirmText: '同意并继续',
+      confirmText: '同意',
       cancelText: '取消',
       confirmColor: '#6366f1',
       success: (r) => {
