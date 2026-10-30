@@ -44,11 +44,21 @@ export async function callCloud<T>(name: string, data: Record<string, unknown> =
     throw new Error('云开发不可用，请检查 appid 与云环境配置');
   }
   return new Promise<T>((resolve, reject) => {
+    // 兜底超时：callFunction 无自带超时，云函数 hang 时客户端会永远 pending，
+    // 页面表现为无提示卡死。15s 后强制 reject，由各调用方 catch 提示/降级。
+    const timer = setTimeout(() => {
+      console.error(`[cloud] callFunction 超时(15s): ${name}`);
+      reject(new Error(`云函数 ${name} 响应超时，请稍后重试`));
+    }, 15000);
     cloud.callFunction({
       name,
       data,
-      success: (res) => resolve(res.result as T),
+      success: (res) => {
+        clearTimeout(timer);
+        resolve(res.result as T);
+      },
       fail: (err) => {
+        clearTimeout(timer);
         // 打印完整错误对象（含 errCode），toast 里 errMsg 易被截断难以定位
         console.error(`[cloud] callFunction 失败: ${name}`, JSON.stringify(err));
         reject(new Error(err.message || `云函数 ${name} 调用失败`));
