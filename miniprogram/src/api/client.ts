@@ -12,11 +12,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * AI 工具云函数统一封装。兜底超时 70s：大模型出图需 20~40s+，
+ * 且略高于云函数控制台 60s 超时上限，让云函数自身的超时错误优先传回
+ * （此前误用 callCloud 的 15s 默认值，导致 AI 工具十几秒就报"云函数超时"）。
+ */
 async function callTool<T extends { error?: string; code?: string }>(
   name: string,
   data: Record<string, unknown>,
 ): Promise<T> {
-  const res = await callCloud<T>(name, data);
+  const res = await callCloud<T>(name, data, 70000);
   if (res && typeof res === 'object' && res.error) {
     throw new ApiError(res.error, res.code);
   }

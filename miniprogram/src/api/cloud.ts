@@ -37,19 +37,29 @@ function getWxCloud(): WxCloud | null {
   return g.wx?.cloud ?? null;
 }
 
-/** 调用云函数；云开发不可用（如未配置环境 ID）时抛错 */
-export async function callCloud<T>(name: string, data: Record<string, unknown> = {}): Promise<T> {
+/**
+ * 调用云函数；云开发不可用（如未配置环境 ID）时抛错。
+ *
+ * timeoutMs：客户端兜底超时（callFunction 本身无超时，云函数 hang 时会永久 pending）。
+ * - 默认 15s：轻量调用（登录 / 内容安全检测 / 档案更新）
+ * - AI 生成类（去水印/修复/相似图/分割/拆分）须传 ~70s：
+ *   大模型出图实测 20~40s+，且应略高于云函数控制台的 60s 超时上限——
+ *   让云函数自身的超时错误优先传回（信息更准），客户端兜底仅在 hang 时触发
+ */
+export async function callCloud<T>(
+  name: string,
+  data: Record<string, unknown> = {},
+  timeoutMs = 15000,
+): Promise<T> {
   const cloud = getWxCloud();
   if (!cloud) {
     throw new Error('云开发不可用，请检查 appid 与云环境配置');
   }
   return new Promise<T>((resolve, reject) => {
-    // 兜底超时：callFunction 无自带超时，云函数 hang 时客户端会永远 pending，
-    // 页面表现为无提示卡死。15s 后强制 reject，由各调用方 catch 提示/降级。
     const timer = setTimeout(() => {
-      console.error(`[cloud] callFunction 超时(15s): ${name}`);
+      console.error(`[cloud] callFunction 超时(${Math.round(timeoutMs / 1000)}s): ${name}`);
       reject(new Error(`云函数 ${name} 响应超时，请稍后重试`));
-    }, 15000);
+    }, timeoutMs);
     cloud.callFunction({
       name,
       data,
