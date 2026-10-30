@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Image, Input, Slider, Button } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
 import { generateSimilar } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
-import { ensurePortraitConsent } from '../../utils/consent';
+import { ensurePortraitConsentOnEnter } from '../../utils/consent';
 import { chooseImage, saveToAlbum, formatSize, ChosenImage } from '../../utils/image';
 import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
@@ -49,6 +49,18 @@ export default function Similar() {
     }
   }, [generating]);
 
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回，不允许继续使用
+  useDidShow(() => {
+    ensurePortraitConsentOnEnter(() => {
+      Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
+      setTimeout(() => {
+        Taro.navigateBack({
+          fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
+        });
+      }, 900);
+    });
+  });
+
   const pickImage = async () => {
     try {
       const chosen = await chooseImage({ secCheck: true });
@@ -77,10 +89,6 @@ export default function Similar() {
     const h = parseInt(height, 10);
     if (!w || !h || w <= 0 || h <= 0) {
       Taro.showToast({ title: '请输入有效尺寸', icon: 'none' });
-      return;
-    }
-    if (!(await ensurePortraitConsent())) {
-      Taro.showToast({ title: '未同意授权，本次已取消', icon: 'none' });
       return;
     }
     setGenerating(true);

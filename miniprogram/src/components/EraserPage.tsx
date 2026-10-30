@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Slider, Button } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
 import { generateEdit } from '../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../api/cloud';
-import { ensurePortraitConsent } from '../utils/consent';
+import { ensurePortraitConsentOnEnter } from '../utils/consent';
 import { chooseImage, saveToAlbum, ChosenImage } from '../utils/image';
 import { BrushCanvas, BrushCanvasHandle } from './BrushCanvas';
 import ProcessPlaceholder from './ProcessPlaceholder';
@@ -50,6 +50,18 @@ export default function EraserPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processing]);
 
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回，不允许继续使用
+  useDidShow(() => {
+    ensurePortraitConsentOnEnter(() => {
+      Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
+      setTimeout(() => {
+        Taro.navigateBack({
+          fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
+        });
+      }, 900);
+    });
+  });
+
   const pickImage = async () => {
     try {
       const chosen = await chooseImage({ secCheck: true });
@@ -70,7 +82,6 @@ export default function EraserPage({
       Taro.showToast({ title: '请先涂抹需要消除的区域', icon: 'none' });
       return;
     }
-    if (!(await ensurePortraitConsent())) return;
     setProcessing(true);
     setResult(null);
     try {

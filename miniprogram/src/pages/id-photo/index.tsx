@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Canvas, Slider, Button } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
 import { segmentImage } from '../../api/client';
 import { uploadImage, downloadTemp } from '../../api/cloud';
-import { ensurePortraitConsent } from '../../utils/consent';
+import { ensurePortraitConsentOnEnter } from '../../utils/consent';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import {
   canvasToTempFile,
@@ -171,6 +171,18 @@ export default function IdPhoto() {
     subject: PreparedSubject | null;
   }>({ key: '', subject: null });
 
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回，不允许继续使用
+  useDidShow(() => {
+    ensurePortraitConsentOnEnter(() => {
+      Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
+      setTimeout(() => {
+        Taro.navigateBack({
+          fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
+        });
+      }, 900);
+    });
+  });
+
   /** 高清合成：从预处理的高分辨率人像【向下采样】到输出尺寸 + unsharp 锐化 */
   const compose = useCallback(
     async (subject: PreparedSubject, bg: string, sp: IdSpec) => {
@@ -265,11 +277,7 @@ export default function IdPhoto() {
     try {
       const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
-      if (!(await ensurePortraitConsent())) {
-        Taro.showToast({ title: '未同意授权，本次已取消', icon: 'none' });
-        return;
-      }
-      console.log('[pick] 授权通过，开始上传');
+      console.log('[pick] 开始上传');
       setImage(chosen);
       setResult('');
       setTolerance(16);

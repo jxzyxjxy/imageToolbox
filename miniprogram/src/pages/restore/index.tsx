@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Image, Button } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
 import { generateEdit } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
-import { ensurePortraitConsent } from '../../utils/consent';
+import { ensurePortraitConsentOnEnter } from '../../utils/consent';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
@@ -25,6 +25,18 @@ export default function Restore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processing]);
 
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回，不允许继续使用
+  useDidShow(() => {
+    ensurePortraitConsentOnEnter(() => {
+      Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
+      setTimeout(() => {
+        Taro.navigateBack({
+          fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
+        });
+      }, 900);
+    });
+  });
+
   const pickImage = async () => {
     try {
       const chosen = await chooseImage({ secCheck: true });
@@ -39,10 +51,6 @@ export default function Restore() {
   const restore = async () => {
     if (!image) {
       Taro.showToast({ title: '请先选择照片', icon: 'none' });
-      return;
-    }
-    if (!(await ensurePortraitConsent())) {
-      Taro.showToast({ title: '未同意授权，本次已取消', icon: 'none' });
       return;
     }
     setProcessing(true);
