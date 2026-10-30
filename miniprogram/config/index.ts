@@ -20,7 +20,9 @@ export default {
   plugins: [],
   defineConstants: {},
   copy: {
-    patterns: [],
+    // tabBar 图标为静态二进制资源，不经 webpack 处理，直接拷入 dist
+    // （app.config.ts 中 iconPath 引用 'assets/tabbar/xxx.png'）
+    patterns: [{ from: 'src/assets/tabbar/', to: 'dist/assets/tabbar/' }],
     options: {},
   },
   framework: 'react',

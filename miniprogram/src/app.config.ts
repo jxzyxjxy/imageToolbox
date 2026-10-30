@@ -1,6 +1,7 @@
 export default defineAppConfig({
   pages: [
     'pages/index/index',
+    'pages/video/index',
     'pages/similar/index',
     'pages/compress/index',
     'pages/restore/index',
@@ -10,7 +11,29 @@ export default defineAppConfig({
     'pages/smart-eraser/index',
     'pages/upscale/index',
     'pages/icon-splitter/index',
+    'pages/video/compress/index',
+    'pages/video/parse/index',
   ],
+  tabBar: {
+    color: '#94a3b8',
+    selectedColor: '#6366f1',
+    backgroundColor: '#ffffff',
+    borderStyle: 'white',
+    list: [
+      {
+        pagePath: 'pages/index/index',
+        text: '图片工具',
+        iconPath: 'assets/tabbar/pic-off.png',
+        selectedIconPath: 'assets/tabbar/pic-on.png',
+      },
+      {
+        pagePath: 'pages/video/index',
+        text: '视频工具',
+        iconPath: 'assets/tabbar/video-off.png',
+        selectedIconPath: 'assets/tabbar/video-on.png',
+      },
+    ],
+  },
   // 组件按需注入：减小启动包体积，发布检测要求
   lazyCodeLoading: 'requiredComponents',
   window: {

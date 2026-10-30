@@ -138,3 +138,28 @@ export async function splitIcons(
     ...opts,
   });
 }
+
+/* ---------- 视频链接解析（取回无水印原片） ---------- */
+
+export interface ParseVideoResponse {
+  ok?: boolean;
+  /** 转存到云存储的无水印视频（前端 downloadTemp 后保存相册） */
+  videoFileID?: string;
+  /** 转存后的封面图 fileID */
+  coverFileID?: string;
+  title?: string;
+  /** 视频大小（字节） */
+  size?: number;
+  note?: string;
+  error?: string;
+  code?: string;
+}
+
+/**
+ * 解析分享链接取回无水印视频。
+ * 云函数内完成：链接解析 → 拉取视频流 → 转存云存储（绕开 downloadFile 域名白名单），
+ * 耗时随视频体积增长（下载 + 上传），走 callTool 的 70s 兜底。
+ */
+export async function parseVideoLink(text: string): Promise<ParseVideoResponse> {
+  return callTool<ParseVideoResponse>('yt_video_parse', { text });
+}
