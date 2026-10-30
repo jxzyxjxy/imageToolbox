@@ -1,7 +1,12 @@
-// 生成 tabBar 图标（81x81 PNG，零外部依赖：Node zlib 手写 PNG 编码 + 像素级几何绘制）
+// 生成 tabBar 图标（81x81 PNG）
 // 用法：node scripts/gen-tabbar-icons.mjs
 // 输出：src/assets/tabbar/{pic,video}-{off,on}.png
 // 小程序 tabBar iconPath 引用 'assets/tabbar/xxx.png'，由 config/index.ts 的 copy 配置拷入 dist
+//
+// 编码器说明（2026-10-30 真机踩坑记录）：
+// 早期版本手写 PNG 编码（zlib + CRC），文件通过 CRC/libpng 校验，开发者工具模拟器也能渲染，
+// 但真机 tabBar 不显示（裂图占位）。改用 sharp（libvips/libpng）编码后真机正常。
+// 手写编码器保留为 sharp 不可用时的兜底，但产物未经真机验证，优先确保 sharp 可用。
 
 import zlib from 'node:zlib';
 import fs from 'node:fs';
@@ -11,7 +16,23 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(__dirname, '../src/assets/tabbar');
 
-/* ---------- PNG 编码（RGBA8，无滤波） ---------- */
+/* ---------- 编码器：sharp 优先，手写兜底 ---------- */
+
+let sharp = null;
+try {
+  sharp = (await import('sharp')).default;
+} catch {
+  console.warn('[icons] sharp 不可用，回退手写 PNG 编码器（产物未经真机验证）');
+}
+
+async function encodePNG(width, height, rgba) {
+  if (sharp) {
+    return sharp(rgba, { raw: { width, height, channels: 4 } })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+  }
+  return encodePNGHandrolled(width, height, rgba);
+}
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -38,14 +59,13 @@ function chunk(type, data) {
   return Buffer.concat([len, typeBuf, data, crc]);
 }
 
-function encodePNG(width, height, rgba) {
+function encodePNGHandrolled(width, height, rgba) {
   const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; // bit depth
   ihdr[9] = 6; // color type: RGBA
-  // 每行前置 filter byte 0
   const raw = Buffer.alloc((width * 4 + 1) * height);
   for (let y = 0; y < height; y++) {
     rgba.copy(raw, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4);
@@ -111,7 +131,7 @@ function drawPicIcon(color) {
       }
     }
   }
-  return encodePNG(SIZE, SIZE, rgba);
+  return rgba;
 }
 
 function drawVideoIcon(color) {
@@ -133,12 +153,19 @@ function drawVideoIcon(color) {
       }
     }
   }
-  return encodePNG(SIZE, SIZE, rgba);
+  return rgba;
 }
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
-fs.writeFileSync(path.join(OUT_DIR, 'pic-off.png'), drawPicIcon(RGBA_OFF));
-fs.writeFileSync(path.join(OUT_DIR, 'pic-on.png'), drawPicIcon(RGBA_ON));
-fs.writeFileSync(path.join(OUT_DIR, 'video-off.png'), drawVideoIcon(RGBA_OFF));
-fs.writeFileSync(path.join(OUT_DIR, 'video-on.png'), drawVideoIcon(RGBA_ON));
-console.log(`[icons] 生成 4 个 tabBar 图标 -> ${OUT_DIR}`);
+const jobs = [
+  ['pic-off.png', drawPicIcon(RGBA_OFF)],
+  ['pic-on.png', drawPicIcon(RGBA_ON)],
+  ['video-off.png', drawVideoIcon(RGBA_OFF)],
+  ['video-on.png', drawVideoIcon(RGBA_ON)],
+];
+for (const [name, rgba] of jobs) {
+  const buf = await encodePNG(SIZE, SIZE, rgba);
+  fs.writeFileSync(path.join(OUT_DIR, name), buf);
+  console.log(`[icons] ${name} ${buf.length}B via ${sharp ? 'sharp' : 'handrolled'}`);
+}
+console.log(`[icons] 完成 -> ${OUT_DIR}`);

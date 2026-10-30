@@ -1,7 +1,9 @@
 export default defineAppConfig({
   pages: [
     'pages/index/index',
-    'pages/video/index',
+    // 注意：注册路径必须与源码路径完全一致（源码在 pages/video/index/index.tsx），
+    // 注册成 pages/video/index 会导致 Taro 产物劈叉（js 平铺、wxml 嵌套），真机白屏
+    'pages/video/index/index',
     'pages/similar/index',
     'pages/compress/index',
     'pages/restore/index',
@@ -27,7 +29,7 @@ export default defineAppConfig({
         selectedIconPath: 'assets/tabbar/pic-on.png',
       },
       {
-        pagePath: 'pages/video/index',
+        pagePath: 'pages/video/index/index',
         text: '视频工具',
         iconPath: 'assets/tabbar/video-off.png',
         selectedIconPath: 'assets/tabbar/video-on.png',
