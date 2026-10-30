@@ -36,12 +36,14 @@ async function makeSecCheckBase64(filePath: string): Promise<string | null> {
 export async function chooseImage(
   options: ChooseImageOptions = {},
 ): Promise<ChosenImage | null> {
+  console.log('[img] chooseImage 开始', options.secCheck ? '(含安全检测)' : '');
   const res = await Taro.chooseImage({
     count: 1,
     sizeType: ['original', 'compressed'],
     sourceType: ['album', 'camera'],
   });
   const filePath = res.tempFilePaths?.[0];
+  console.log('[img] 选图返回:', filePath || '(未选)');
   if (!filePath) return null;
 
   const ext = (filePath.match(/\.(\w+)$/)?.[1] || 'png').toLowerCase();
@@ -57,8 +59,10 @@ export async function chooseImage(
 
   if (options.secCheck) {
     const small = await makeSecCheckBase64(filePath);
+    console.log('[img] 送检小图生成:', small ? `${Math.round(small.length / 1024)}KB` : '跳过(压缩失败或不可用)');
     if (small) {
       const check = await secCheckImage(small);
+      console.log('[img] 安全检测结果:', JSON.stringify(check));
       if (!check.pass) {
         await Taro.showToast({
           title: check.error || '图片包含违规内容',

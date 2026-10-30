@@ -261,10 +261,12 @@ export default function IdPhoto() {
   );
 
   const pickImage = async () => {
+    console.log('[pick] 证件照·选图按钮点击');
     try {
       const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
       if (!(await ensurePortraitConsent())) return;
+      console.log('[pick] 授权通过，开始上传');
       setImage(chosen);
       setResult('');
       setTolerance(16);
@@ -278,6 +280,7 @@ export default function IdPhoto() {
       setNote('图片上传中…');
       try {
         const inputFileID = await uploadImage(chosen.filePath);
+        console.log('[pick] 上传成功:', inputFileID);
         setUploading(false);
         setNote('AI 抠图中，复杂背景也能自动去除…');
         const res = await segmentImage(inputFileID);
