@@ -5,6 +5,7 @@ import { Loader2, Wand2 } from 'lucide-react';
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BrushEditor, type BrushEditorHandle } from '@/components/brush-editor';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import { readFileAsDataURL } from '@/lib/image-processing';
 
 export function SmartEraserClient() {
@@ -12,15 +13,21 @@ export function SmartEraserClient() {
   const [imageUrl, setImageUrl] = useState('');
   const [fileName, setFileName] = useState('image');
   const [processing, setProcessing] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [resultUrl, setResultUrl] = useState('');
   const [error, setError] = useState('');
 
   const handleFile = async (file: File) => {
-    const url = await readFileAsDataURL(file);
-    setImageUrl(url);
-    setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
-    setResultUrl('');
-    setError('');
+    setPicking(true);
+    try {
+      const url = await readFileAsDataURL(file);
+      setImageUrl(url);
+      setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
+      setResultUrl('');
+      setError('');
+    } finally {
+      setPicking(false);
+    }
   };
 
   const handleProcess = async () => {
@@ -79,7 +86,11 @@ export function SmartEraserClient() {
 
       <div className="space-y-4 px-4">
         {!imageUrl ? (
-          <Dropzone onFile={handleFile} />
+          <Dropzone
+            onFile={handleFile}
+            loading={picking}
+            loadingLabel="正在读取图片…"
+          />
         ) : (
           <>
             <div className="rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 p-5 text-white">
@@ -154,6 +165,13 @@ export function SmartEraserClient() {
             </button>
           </div>
         </div>
+      )}
+
+      {processing && (
+        <ProcessingOverlay
+          label="AI 消除中…"
+          hint="图片上传与处理约需 10~30 秒，请勿退出"
+        />
       )}
     </div>
   );

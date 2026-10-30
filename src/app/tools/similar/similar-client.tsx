@@ -30,6 +30,7 @@ const BG_OPTIONS = [
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import { readFileAsDataURL, downloadDataUrl } from '@/lib/image-processing';
 
 interface ResultItem {
@@ -61,27 +62,33 @@ export function SimilarClient() {
   const [similarity, setSimilarity] = useState(70);
   const [count, setCount] = useState(1);
   const [processing, setProcessing] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [results, setResults] = useState<ResultItem[]>([]);
   const [error, setError] = useState('');
 
   const handleFile = async (file: File) => {
-    const url = await readFileAsDataURL(file);
-    setImageUrl(url);
-    setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
-    setResults([]);
-    setError('');
-    // 读取原图尺寸，作为默认输出尺寸
-    const probe = new Image();
-    probe.onload = () => {
-      const w = probe.naturalWidth;
-      const h = probe.naturalHeight;
-      if (w > 0 && h > 0) {
-        setOrigSize({ w, h });
-        setWidth(String(w));
-        setHeight(String(h));
-      }
-    };
-    probe.src = url;
+    setPicking(true);
+    try {
+      const url = await readFileAsDataURL(file);
+      setImageUrl(url);
+      setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
+      setResults([]);
+      setError('');
+      // 读取原图尺寸，作为默认输出尺寸
+      const probe = new Image();
+      probe.onload = () => {
+        const w = probe.naturalWidth;
+        const h = probe.naturalHeight;
+        if (w > 0 && h > 0) {
+          setOrigSize({ w, h });
+          setWidth(String(w));
+          setHeight(String(h));
+        }
+      };
+      probe.src = url;
+    } finally {
+      setPicking(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -158,7 +165,11 @@ export function SimilarClient() {
 
       <div className="space-y-4 px-4">
         {!imageUrl ? (
-          <Dropzone onFile={handleFile} />
+          <Dropzone
+            onFile={handleFile}
+            loading={picking}
+            loadingLabel="正在读取图片…"
+          />
         ) : (
           <>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -426,6 +437,13 @@ export function SimilarClient() {
           loadingLabel="AI 生成中..."
           secondaryLabel={results.length > 1 ? '全部保存' : undefined}
           onSecondary={results.length > 1 ? handleDownloadAll : undefined}
+        />
+      )}
+
+      {processing && (
+        <ProcessingOverlay
+          label="AI 生成中…"
+          hint="图片上传与生成约需 10~30 秒，请勿退出"
         />
       )}
     </div>

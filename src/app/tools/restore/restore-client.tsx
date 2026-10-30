@@ -5,23 +5,30 @@ import { Sparkles, RefreshCcw } from 'lucide-react';
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import { readFileAsDataURL, formatBytes, downloadDataUrl } from '@/lib/image-processing';
 
 export function RestoreClient() {
   const [imageUrl, setImageUrl] = useState<string>('');
   const [fileName, setFileName] = useState('image');
   const [processing, setProcessing] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [resultUrl, setResultUrl] = useState<string>('');
   const [error, setError] = useState('');
   const [sizes, setSizes] = useState<{ src: number; out: number } | null>(null);
 
   const handleFile = async (file: File) => {
-    const url = await readFileAsDataURL(file);
-    setImageUrl(url);
-    setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
-    setResultUrl('');
-    setSizes(null);
-    setError('');
+    setPicking(true);
+    try {
+      const url = await readFileAsDataURL(file);
+      setImageUrl(url);
+      setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
+      setResultUrl('');
+      setSizes(null);
+      setError('');
+    } finally {
+      setPicking(false);
+    }
   };
 
   const handleRestore = async () => {
@@ -78,7 +85,11 @@ export function RestoreClient() {
 
       <div className="space-y-4 px-4">
         {!imageUrl ? (
-          <Dropzone onFile={handleFile} />
+          <Dropzone
+            onFile={handleFile}
+            loading={picking}
+            loadingLabel="正在读取图片…"
+          />
         ) : (
           <>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -150,6 +161,13 @@ export function RestoreClient() {
           loadingLabel="AI 修复中..."
           secondaryLabel={resultUrl ? '保存图片' : undefined}
           onSecondary={resultUrl ? handleDownload : undefined}
+        />
+      )}
+
+      {processing && (
+        <ProcessingOverlay
+          label="AI 修复中…"
+          hint="图片上传与修复约需 10~30 秒，请勿退出"
         />
       )}
     </div>

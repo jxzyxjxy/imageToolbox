@@ -5,6 +5,7 @@ import { Sparkles, Camera } from 'lucide-react';
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import {
   readFileAsDataURL,
   loadImage,
@@ -70,37 +71,43 @@ export default function IdPhotoClient() {
   const [note, setNote] = useState('');
   const [aiSubject, setAiSubject] = useState<HTMLCanvasElement | null>(null);
   const [segmenting, setSegmenting] = useState(false);
+  const [picking, setPicking] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFile = useCallback(async (file: File) => {
-    const url = await readFileAsDataURL(file);
-    const img = await loadImage(url);
-    const canvas = drawToCanvas(img, 2048);
-    setSourceCanvas(canvas);
-    setResultUrl(null);
-    setNote('');
-    setRefColor(sampleCornerColor(canvas));
-    setAiSubject(null);
-
-    // 优先：服务端 AI 人像分割（像素级抠图，适配复杂背景）
-    setSegmenting(true);
+    setPicking(true);
     try {
-      const res = await fetch('/api/segment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // 必须 PNG：透明 PNG 素材的 alpha 不能丢（转 JPEG 会变黑底）
-        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
-      });
-      const data = (await res.json()) as { dataUrl?: string; error?: string };
-      if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
-      const segImg = await loadImage(data.dataUrl);
-      setAiSubject(drawToCanvas(segImg, 2048));
-      setNote('AI 已自动去除背景，直接选背景色与规格即可');
-    } catch {
+      const url = await readFileAsDataURL(file);
+      const img = await loadImage(url);
+      const canvas = drawToCanvas(img, 2048);
+      setSourceCanvas(canvas);
+      setResultUrl(null);
+      setNote('');
+      setRefColor(sampleCornerColor(canvas));
       setAiSubject(null);
-      setNote('AI 抠图不可用，已切换本地抠图模式，可识别背景色或调节容差');
+
+      // 优先：服务端 AI 人像分割（像素级抠图，适配复杂背景）
+      setSegmenting(true);
+      try {
+        const res = await fetch('/api/segment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // 必须 PNG：透明 PNG 素材的 alpha 不能丢（转 JPEG 会变黑底）
+          body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
+        });
+        const data = (await res.json()) as { dataUrl?: string; error?: string };
+        if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
+        const segImg = await loadImage(data.dataUrl);
+        setAiSubject(drawToCanvas(segImg, 2048));
+        setNote('AI 已自动去除背景，直接选背景色与规格即可');
+      } catch {
+        setAiSubject(null);
+        setNote('AI 抠图不可用，已切换本地抠图模式，可识别背景色或调节容差');
+      } finally {
+        setSegmenting(false);
+      }
     } finally {
-      setSegmenting(false);
+      setPicking(false);
     }
   }, []);
 
@@ -170,7 +177,12 @@ export default function IdPhotoClient() {
 
       <main className="px-5 pt-4">
         {!sourceCanvas ? (
-          <Dropzone onFile={handleFile} hint="建议使用正面、光线均匀、背景干净的人像照" />
+          <Dropzone
+            onFile={handleFile}
+            hint="建议使用正面、光线均匀、背景干净的人像照"
+            loading={picking}
+            loadingLabel="正在读取图片…"
+          />
         ) : (
           <div className="space-y-4">
             {/* 标题卡 */}
@@ -321,6 +333,13 @@ export default function IdPhotoClient() {
         onPrimary={handleDownload}
         onSecondary={reset}
       />
+
+      {segmenting && (
+        <ProcessingOverlay
+          label="图片上传中，AI 抠图分析里…"
+          hint="上传与分割约需 5~30 秒，请勿退出"
+        />
+      )}
     </div>
   );
 }

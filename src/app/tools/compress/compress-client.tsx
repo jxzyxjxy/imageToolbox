@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import {
   readFileAsDataURL,
   loadImage,
@@ -30,13 +31,19 @@ export default function CompressClient() {
   );
   const [result, setResult] = useState<CompressResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFile = useCallback(async (file: File) => {
-    const url = await readFileAsDataURL(file);
-    const img = await loadImage(url);
-    setOriginal({ url, size: file.size, img });
-    setResult(null);
+    setPicking(true);
+    try {
+      const url = await readFileAsDataURL(file);
+      const img = await loadImage(url);
+      setOriginal({ url, size: file.size, img });
+      setResult(null);
+    } finally {
+      setPicking(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -85,7 +92,11 @@ export default function CompressClient() {
 
       <main className="px-5 pt-4">
         {!original ? (
-          <Dropzone onFile={handleFile} />
+          <Dropzone
+            onFile={handleFile}
+            loading={picking}
+            loadingLabel="正在读取图片…"
+          />
         ) : (
           <div className="space-y-4">
             {/* 标题卡 */}

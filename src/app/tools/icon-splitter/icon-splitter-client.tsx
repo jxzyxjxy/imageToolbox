@@ -6,6 +6,7 @@ import { Check, Copy, Download, Image as ImageIcon, Package } from 'lucide-react
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import { downloadDataUrl, downloadBlob, readFileAsDataURL } from '@/lib/image-processing';
 
 interface IconItem {
@@ -58,21 +59,26 @@ export default function IconSplitterClient() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [copied, setCopied] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const [targetSize, setTargetSize] = useState(128);
   const [cols, setCols] = useState(0);
   const [gap, setGap] = useState(8);
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     if (!file) return;
-    void readFileAsDataURL(file).then((url) => {
+    setPicking(true);
+    try {
+      const url = await readFileAsDataURL(file);
       setSource(url);
       setFileName(file.name || '');
       setIcons([]);
       setSprite(null);
       setSpriteMeta(null);
       setError('');
-    });
+    } finally {
+      setPicking(false);
+    }
   };
 
   const run = async () => {
@@ -151,7 +157,18 @@ export default function IconSplitterClient() {
       />
 
       <div className="space-y-4 px-4 py-4">
-        <Dropzone onFile={handleFile} />
+        <Dropzone
+          onFile={handleFile}
+          loading={picking}
+          loadingLabel="正在读取图片…"
+        />
+
+        {loading && (
+          <ProcessingOverlay
+            label="AI 拆分中…"
+            hint="图片上传与识别约需几秒，请勿退出"
+          />
+        )}
 
         {source && icons.length === 0 && (
           <div className="rounded-[24px] bg-white p-4 shadow-[0_4px_20px_rgba(30,41,59,0.06)]">

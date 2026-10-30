@@ -5,6 +5,7 @@ import { Sparkles, Pipette } from 'lucide-react';
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import {
   readFileAsDataURL,
   loadImage,
@@ -36,44 +37,49 @@ export default function RemoveBgClient() {
   const [refColor, setRefColor] = useState<[number, number, number]>([245, 245, 245]);
   const [tolerance, setTolerance] = useState(16);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const [picking, setPicking] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [aiSubject, setAiSubject] = useState<HTMLCanvasElement | null>(null);
   const [segmenting, setSegmenting] = useState(false);
+  const [picking, setPicking] = useState(false);
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFile = useCallback(async (file: File) => {
-    const url = await readFileAsDataURL(file);
-    const img = await loadImage(url);
-    const canvas = drawToCanvas(img, 1280);
-    setSourceCanvas(canvas);
-    setResultUrl(null);
-    setNote('');
-    setRefColor(sampleCornerColor(canvas));
-    setAiSubject(null);
-
-    // 优先：服务端 AI 主体分割（发丝级，适配复杂背景）
-    setSegmenting(true);
+    setPicking(true);
     try {
-      const res = await fetch('/api/segment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // 必须 PNG：canvas 默认透明底，转 JPEG 会把透明区压成黑色
-        body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
-      });
-      const data = (await res.json()) as { dataUrl?: string; error?: string };
-      if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
-      const segImg = await loadImage(data.dataUrl);
-      setAiSubject(drawToCanvas(segImg, 1280));
-      setNote('AI 已自动去除背景，可直接保存');
-    } catch {
+      const url = await readFileAsDataURL(file);
+      const img = await loadImage(url);
+      const canvas = drawToCanvas(img, 1280);
+      setSourceCanvas(canvas);
+      setResultUrl(null);
+      setNote('');
+      setRefColor(sampleCornerColor(canvas));
       setAiSubject(null);
-      setNote('AI 抠图不可用，已切换本地模式，可识别背景色或手动取色微调');
+
+      // 优先：服务端 AI 主体分割（发丝级，适配复杂背景）
+      setSegmenting(true);
+      try {
+        const res = await fetch('/api/segment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // 必须 PNG：canvas 默认透明底，转 JPEG 会把透明区压成黑色
+          body: JSON.stringify({ imageBase64: canvas.toDataURL('image/png') }),
+        });
+        const data = (await res.json()) as { dataUrl?: string; error?: string };
+        if (!res.ok || !data.dataUrl) throw new Error(data.error || 'segment failed');
+        const segImg = await loadImage(data.dataUrl);
+        setAiSubject(drawToCanvas(segImg, 1280));
+        setNote('AI 已自动去除背景，可直接保存');
+      } catch {
+        setAiSubject(null);
+        setNote('AI 抠图不可用，已切换本地模式，可识别背景色或手动取色微调');
+      } finally {
+        setSegmenting(false);
+      }
     } finally {
-      setSegmenting(false);
+      setPicking(false);
     }
   }, []);
 
@@ -174,7 +180,12 @@ export default function RemoveBgClient() {
 
       <main className="px-5 pt-4">
         {!sourceCanvas ? (
-          <Dropzone onFile={handleFile} hint="背景干净、主体清晰的图片效果最佳" />
+          <Dropzone
+            onFile={handleFile}
+            hint="背景干净、主体清晰的图片效果最佳"
+            loading={picking}
+            loadingLabel="正在读取图片…"
+          />
         ) : (
           <div className="space-y-4">
             {/* 标题卡 */}
@@ -309,6 +320,13 @@ export default function RemoveBgClient() {
         onPrimary={handleDownload}
         onSecondary={reset}
       />
+
+      {segmenting && (
+        <ProcessingOverlay
+          label="图片上传中，AI 抠图分析里…"
+          hint="上传与分割约需 5~30 秒，请勿退出"
+        />
+      )}
     </div>
   );
 }

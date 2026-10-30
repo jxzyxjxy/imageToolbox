@@ -5,6 +5,7 @@ import { Sparkles } from 'lucide-react';
 import { ToolHeader } from '@/components/tool-header';
 import { Dropzone } from '@/components/dropzone';
 import { BottomBar } from '@/components/bottom-bar';
+import { ProcessingOverlay } from '@/components/processing-overlay';
 import {
   formatBytes,
   loadImage,
@@ -28,14 +29,20 @@ export function UpscaleClient() {
   const [resultUrl, setResultUrl] = useState('');
   const [dims, setDims] = useState<{ src: string; out: string } | null>(null);
   const [sizes, setSizes] = useState<{ src: number; out: number } | null>(null);
+  const [picking, setPicking] = useState(false);
 
   const handleFile = async (file: File) => {
-    const url = await readFileAsDataURL(file);
-    setImageUrl(url);
-    setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
-    setResultUrl('');
-    setDims(null);
-    setSizes(null);
+    setPicking(true);
+    try {
+      const url = await readFileAsDataURL(file);
+      setImageUrl(url);
+      setFileName(file.name.replace(/\.[^.]+$/, '') || 'image');
+      setResultUrl('');
+      setDims(null);
+      setSizes(null);
+    } finally {
+      setPicking(false);
+    }
   };
 
   const handleUpscale = async () => {
@@ -75,7 +82,11 @@ export function UpscaleClient() {
 
       <div className="space-y-4 px-4">
         {!imageUrl ? (
-          <Dropzone onFile={handleFile} />
+          <Dropzone
+            onFile={handleFile}
+            loading={picking}
+            loadingLabel="正在读取图片…"
+          />
         ) : (
           <>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -165,6 +176,13 @@ export function UpscaleClient() {
           loadingLabel="正在放大..."
           secondaryLabel={resultUrl ? '保存图片' : undefined}
           onSecondary={resultUrl ? handleDownload : undefined}
+        />
+      )}
+
+      {processing && (
+        <ProcessingOverlay
+          label="正在放大…"
+          hint="高倍数处理较慢，请勿退出页面"
         />
       )}
     </div>
