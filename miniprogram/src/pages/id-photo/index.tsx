@@ -362,6 +362,10 @@ export default function IdPhoto() {
       <View className="banner">
         <Text className="banner__title">标准证件照，即时生成</Text>
         <Text className="banner__desc">自由选择背景色与尺寸规格</Text>
+        <View className="banner__ai">
+          <Text className="banner__ai-badge">AI生成</Text>
+          <Text className="banner__ai-text">本工具生成内容由人工智能生成</Text>
+        </View>
       </View>
 
       {/* 选图 */}

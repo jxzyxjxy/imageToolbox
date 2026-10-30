@@ -101,6 +101,10 @@ export default function Restore() {
       <View className="banner">
         <Text className="banner__title">AI 老照片修复</Text>
         <Text className="banner__desc">修复模糊、划痕、褪色，还原清晰记忆</Text>
+        <View className="banner__ai">
+          <Text className="banner__ai-badge">AI生成</Text>
+          <Text className="banner__ai-text">本工具生成内容由人工智能生成</Text>
+        </View>
       </View>
 
       {/* 选图 */}

@@ -133,6 +133,10 @@ export default function EraserPage({
       <View className={`banner ${bannerClass}`}>
         <Text className="banner__title">{title}</Text>
         <Text className="banner__desc">{subtitle}</Text>
+        <View className="banner__ai">
+          <Text className="banner__ai-badge">AI生成</Text>
+          <Text className="banner__ai-text">本工具生成内容由人工智能生成</Text>
+        </View>
       </View>
 
       {/* 选图 / 涂抹 */}

@@ -174,6 +174,10 @@ export default function RemoveBg() {
       <View className="banner">
         <Text className="banner__title">AI 智能抠图</Text>
         <Text className="banner__desc">一键去除背景，导出透明 PNG</Text>
+        <View className="banner__ai">
+          <Text className="banner__ai-badge">AI生成</Text>
+          <Text className="banner__ai-text">本工具生成内容由人工智能生成</Text>
+        </View>
       </View>
 
       {/* 选图 */}

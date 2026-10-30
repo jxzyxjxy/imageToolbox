@@ -155,6 +155,10 @@ export default function Similar() {
       <View className="banner">
         <Text className="banner__title">AI 生成相似图</Text>
         <Text className="banner__desc">上传图片，生成风格一致的新图片</Text>
+        <View className="banner__ai">
+          <Text className="banner__ai-badge">AI生成</Text>
+          <Text className="banner__ai-text">本工具生成内容由人工智能生成</Text>
+        </View>
       </View>
 
       {/* 选图 */}
