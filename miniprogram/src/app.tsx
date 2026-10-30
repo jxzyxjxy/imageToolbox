@@ -6,7 +6,7 @@ import './app.scss';
 function App({ children }: PropsWithChildren) {
   useEffect(() => {
     // 版本横幅：确认工具里跑的是哪次构建（排查"改了没生效"类问题）
-    console.log('[YT-VER] v20261031-a 进页授权版');
+    console.log('[YT-VER] v20261031-b 门禁授权版');
     // 初始化微信云开发（仅在小程序环境）
     const g = globalThis as unknown as {
       wx?: { cloud?: { init: (o: { env: string; traceUser?: boolean }) => void } };

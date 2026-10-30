@@ -3,7 +3,7 @@ import { View, Text, Image, Input, Slider, Button } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { generateSimilar } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
-import { ensurePortraitConsentOnEnter } from '../../utils/consent';
+import { requestPortraitConsent, hasAgreed } from '../../utils/consent';
 import { chooseImage, saveToAlbum, formatSize, ChosenImage } from '../../utils/image';
 import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
@@ -28,6 +28,8 @@ interface ResultItem {
 }
 
 export default function Similar() {
+  // 肖像权授权门禁：授权通过前不渲染页面内容（防弹窗弹出前空窗期操作）
+  const [authed, setAuthed] = useState(() => hasAgreed());
   const [image, setImage] = useState<ChosenImage | null>(null);
   const [modelKey, setModelKey] = useState<ModelKey>('seedream4');
   const [bgMode, setBgMode] = useState<'normal' | 'transparent'>('normal');
@@ -49,16 +51,23 @@ export default function Similar() {
     }
   }, [generating]);
 
-  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回，不允许继续使用
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回
   useDidShow(() => {
-    ensurePortraitConsentOnEnter(() => {
-      Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
-      setTimeout(() => {
-        Taro.navigateBack({
-          fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
-        });
-      }, 900);
-    });
+    if (hasAgreed()) {
+      setAuthed(true);
+      return;
+    }
+    requestPortraitConsent(
+      () => setAuthed(true),
+      () => {
+        Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
+        setTimeout(() => {
+          Taro.navigateBack({
+            fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
+          });
+        }, 900);
+      },
+    );
   });
 
   const pickImage = async () => {
@@ -141,6 +150,8 @@ export default function Similar() {
       Taro.hideLoading();
     }
   };
+
+  if (!authed) return null;
 
   return (
     <View className="page">

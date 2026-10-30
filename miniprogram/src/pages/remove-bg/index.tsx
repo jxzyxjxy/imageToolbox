@@ -3,7 +3,7 @@ import { View, Text, Image, Canvas, Slider, Button } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { segmentImage } from '../../api/client';
 import { uploadImage, downloadTemp } from '../../api/cloud';
-import { ensurePortraitConsentOnEnter } from '../../utils/consent';
+import { requestPortraitConsent, hasAgreed } from '../../utils/consent';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import {
   canvasToTempFile,
@@ -35,6 +35,8 @@ async function sampleLocalCorner(
 }
 
 export default function RemoveBg() {
+  // 肖像权授权门禁：授权通过前不渲染页面内容（防弹窗弹出前空窗期操作）
+  const [authed, setAuthed] = useState(() => hasAgreed());
   const [image, setImage] = useState<ChosenImage | null>(null);
   const [refColor, setRefColor] = useState<[number, number, number]>([245, 245, 245]);
   const [tolerance, setTolerance] = useState(16);
@@ -58,16 +60,23 @@ export default function RemoveBg() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmenting, busy]);
 
-  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回，不允许继续使用
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回
   useDidShow(() => {
-    ensurePortraitConsentOnEnter(() => {
-      Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
-      setTimeout(() => {
-        Taro.navigateBack({
-          fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
-        });
-      }, 900);
-    });
+    if (hasAgreed()) {
+      setAuthed(true);
+      return;
+    }
+    requestPortraitConsent(
+      () => setAuthed(true),
+      () => {
+        Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
+        setTimeout(() => {
+          Taro.navigateBack({
+            fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
+          });
+        }, 900);
+      },
+    );
   });
 
   const runCutout = useCallback(
@@ -160,6 +169,8 @@ export default function RemoveBg() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tolerance, aiSeg]);
+
+  if (!authed) return null;
 
   return (
     <View className="page">
