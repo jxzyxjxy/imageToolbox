@@ -4,6 +4,7 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import { generateSimilar } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
 import { requestPortraitConsent, hasAgreed } from '../../utils/consent';
+import ConsentCheckbox from '../../components/ConsentCheckbox';
 import { chooseImage, saveToAlbum, formatSize, ChosenImage } from '../../utils/image';
 import ProcessPlaceholder from '../../components/ProcessPlaceholder';
 import './index.scss';
@@ -51,7 +52,7 @@ export default function Similar() {
     }
   }, [generating]);
 
-  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则留在页面，主按钮置灰等待勾选
   useDidShow(() => {
     if (hasAgreed()) {
       setAuthed(true);
@@ -59,14 +60,7 @@ export default function Similar() {
     }
     requestPortraitConsent(
       () => setAuthed(true),
-      () => {
-        Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
-        setTimeout(() => {
-          Taro.navigateBack({
-            fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
-          });
-        }, 900);
-      },
+      () => console.log('[consent] 首次弹窗被拒绝，按钮置灰等待勾选'),
     );
   });
 
@@ -150,8 +144,6 @@ export default function Similar() {
       Taro.hideLoading();
     }
   };
-
-  if (!authed) return null;
 
   return (
     <View className="page">
@@ -330,9 +322,10 @@ export default function Similar() {
 
       {/* 底部生成按钮 */}
       <View className="footer">
+        <ConsentCheckbox authed={authed} onGrant={() => setAuthed(true)} />
         <Button
-          className={`footer__btn ${generating ? 'footer__btn--disabled' : ''}`}
-          disabled={generating}
+          className={`footer__btn ${!authed || generating ? 'footer__btn--disabled' : ''}`}
+          disabled={!authed || generating}
           onClick={generate}
         >
           {generating ? '生成中…' : '开始生成'}

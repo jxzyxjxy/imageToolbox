@@ -4,6 +4,7 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import { generateEdit } from '../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../api/cloud';
 import { requestPortraitConsent, hasAgreed } from '../utils/consent';
+import ConsentCheckbox from './ConsentCheckbox';
 import { chooseImage, saveToAlbum, ChosenImage } from '../utils/image';
 import { BrushCanvas, BrushCanvasHandle } from './BrushCanvas';
 import ProcessPlaceholder from './ProcessPlaceholder';
@@ -52,7 +53,7 @@ export default function EraserPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processing]);
 
-  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则留在页面，主按钮置灰等待勾选
   useDidShow(() => {
     if (hasAgreed()) {
       setAuthed(true);
@@ -60,14 +61,7 @@ export default function EraserPage({
     }
     requestPortraitConsent(
       () => setAuthed(true),
-      () => {
-        Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
-        setTimeout(() => {
-          Taro.navigateBack({
-            fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
-          });
-        }, 900);
-      },
+      () => console.log('[consent] 首次弹窗被拒绝，按钮置灰等待勾选'),
     );
   });
 
@@ -129,8 +123,6 @@ export default function EraserPage({
       Taro.hideLoading();
     }
   };
-
-  if (!authed) return null;
 
   return (
     <View className="page">
@@ -228,9 +220,10 @@ export default function EraserPage({
       )}
 
       <View className="footer">
+        <ConsentCheckbox authed={authed} onGrant={() => setAuthed(true)} />
         <Button
-          className={`footer__btn ${bannerClass} ${processing ? 'footer__btn--disabled' : ''}`}
-          disabled={processing}
+          className={`footer__btn ${bannerClass} ${!authed || processing ? 'footer__btn--disabled' : ''}`}
+          disabled={!authed || processing}
           onClick={process}
         >
           {processing ? '处理中…' : '开始处理'}

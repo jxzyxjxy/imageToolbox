@@ -4,6 +4,7 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import { segmentImage } from '../../api/client';
 import { uploadImage, downloadTemp } from '../../api/cloud';
 import { requestPortraitConsent, hasAgreed } from '../../utils/consent';
+import ConsentCheckbox from '../../components/ConsentCheckbox';
 import { chooseImage, saveToAlbum, ChosenImage } from '../../utils/image';
 import {
   canvasToTempFile,
@@ -173,7 +174,7 @@ export default function IdPhoto() {
     subject: PreparedSubject | null;
   }>({ key: '', subject: null });
 
-  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则退回
+  // 进入页面即确认肖像权授权：同意一次永久记住；拒绝则留在页面，主按钮置灰等待勾选
   useDidShow(() => {
     if (hasAgreed()) {
       setAuthed(true);
@@ -181,14 +182,7 @@ export default function IdPhoto() {
     }
     requestPortraitConsent(
       () => setAuthed(true),
-      () => {
-        Taro.showToast({ title: '未同意授权，无法使用该工具', icon: 'none' });
-        setTimeout(() => {
-          Taro.navigateBack({
-            fail: () => Taro.reLaunch({ url: '/pages/index/index' }),
-          });
-        }, 900);
-      },
+      () => console.log('[consent] 首次弹窗被拒绝，按钮置灰等待勾选'),
     );
   });
 
@@ -283,6 +277,11 @@ export default function IdPhoto() {
 
   const pickImage = async () => {
     console.log('[pick] 证件照·选图按钮点击');
+    // 本页选图即上传 AI 分割：未授权时拦截（选图区/重新选图/底部按钮统一走这里）
+    if (!authed) {
+      Taro.showToast({ title: '请先勾选同意授权声明', icon: 'none' });
+      return;
+    }
     try {
       const chosen = await chooseImage({ secCheck: true });
       if (!chosen) return;
@@ -357,8 +356,6 @@ export default function IdPhoto() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tolerance, bgColor, spec, aiSeg]);
-
-  if (!authed) return null;
 
   return (
     <View className="page">
@@ -496,9 +493,10 @@ export default function IdPhoto() {
       )}
 
       <View className="footer">
+        <ConsentCheckbox authed={authed} onGrant={() => setAuthed(true)} />
         <Button
-          className={`footer__btn ${busy ? 'footer__btn--disabled' : ''}`}
-          disabled={busy}
+          className={`footer__btn ${!authed || busy ? 'footer__btn--disabled' : ''}`}
+          disabled={!authed || busy}
           onClick={pickImage}
         >
           {image ? '换一张照片' : '选择照片开始'}
