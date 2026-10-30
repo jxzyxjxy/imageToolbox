@@ -42,12 +42,13 @@ export default function RemoveBgClient() {
   const [note, setNote] = useState('');
   const [aiSubject, setAiSubject] = useState<HTMLCanvasElement | null>(null);
   const [segmenting, setSegmenting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [picking, setPicking] = useState(false);
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFile = useCallback(async (file: File) => {
-    setPicking(true);
+    setUploading(true);
     try {
       const url = await readFileAsDataURL(file);
       const img = await loadImage(url);
@@ -79,7 +80,7 @@ export default function RemoveBgClient() {
         setSegmenting(false);
       }
     } finally {
-      setPicking(false);
+      setUploading(false);
     }
   }, []);
 
@@ -98,7 +99,6 @@ export default function RemoveBgClient() {
       const thumb = drawToCanvas(sourceCanvas, 320);
       const base64 = thumb.toDataURL('image/jpeg', 0.8);
       const res = await analyzeBackground(base64);
-      setPicking(false);
       if ((res.confidence ?? 1) >= 0.6) {
         setRefColor(res.bg);
         setNote(
@@ -183,7 +183,7 @@ export default function RemoveBgClient() {
           <Dropzone
             onFile={handleFile}
             hint="背景干净、主体清晰的图片效果最佳"
-            loading={picking}
+            loading={uploading}
             loadingLabel="正在读取图片…"
           />
         ) : (
