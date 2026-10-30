@@ -77,6 +77,10 @@ export default function EraserPage({
   };
 
   const process = async () => {
+    if (!authed) {
+      Taro.showToast({ title: '请先勾选上方肖像权授权', icon: 'none' });
+      return;
+    }
     if (!image) {
       Taro.showToast({ title: '请先选择图片', icon: 'none' });
       return;
@@ -223,7 +227,7 @@ export default function EraserPage({
         <ConsentCheckbox authed={authed} onGrant={() => setAuthed(true)} />
         <Button
           className={`footer__btn ${bannerClass} ${!authed || processing ? 'footer__btn--disabled' : ''}`}
-          disabled={!authed || processing}
+          disabled={processing}
           onClick={process}
         >
           {processing ? '处理中…' : '开始处理'}

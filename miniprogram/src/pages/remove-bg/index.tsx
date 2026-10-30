@@ -112,7 +112,7 @@ export default function RemoveBg() {
   const pickImage = async () => {
     // 本页选图即上传 AI 分割：未授权时拦截（选图区/重新选图/底部按钮统一走这里）
     if (!authed) {
-      Taro.showToast({ title: '请先勾选同意授权声明', icon: 'none' });
+      Taro.showToast({ title: '请先勾选上方肖像权授权', icon: 'none' });
       return;
     }
     try {
@@ -265,7 +265,7 @@ export default function RemoveBg() {
         <ConsentCheckbox authed={authed} onGrant={() => setAuthed(true)} />
         <Button
           className={`footer__btn ${!authed || busy ? 'footer__btn--disabled' : ''}`}
-          disabled={!authed || busy}
+          disabled={busy}
           onClick={pickImage}
         >
           {image ? '换一张图片' : '选择图片开始'}

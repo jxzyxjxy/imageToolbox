@@ -84,6 +84,10 @@ export default function Similar() {
   };
 
   const generate = async () => {
+    if (!authed) {
+      Taro.showToast({ title: '请先勾选上方肖像权授权', icon: 'none' });
+      return;
+    }
     if (!image) {
       Taro.showToast({ title: '请先选择图片', icon: 'none' });
       return;
@@ -325,7 +329,7 @@ export default function Similar() {
         <ConsentCheckbox authed={authed} onGrant={() => setAuthed(true)} />
         <Button
           className={`footer__btn ${!authed || generating ? 'footer__btn--disabled' : ''}`}
-          disabled={!authed || generating}
+          disabled={generating}
           onClick={generate}
         >
           {generating ? '生成中…' : '开始生成'}

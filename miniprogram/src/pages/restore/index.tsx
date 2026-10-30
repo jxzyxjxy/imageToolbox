@@ -52,6 +52,10 @@ export default function Restore() {
   };
 
   const restore = async () => {
+    if (!authed) {
+      Taro.showToast({ title: '请先勾选上方肖像权授权', icon: 'none' });
+      return;
+    }
     if (!image) {
       Taro.showToast({ title: '请先选择照片', icon: 'none' });
       return;
@@ -168,7 +172,7 @@ export default function Restore() {
         <ConsentCheckbox authed={authed} onGrant={() => setAuthed(true)} />
         <Button
           className={`footer__btn ${!authed || processing ? 'footer__btn--disabled' : ''}`}
-          disabled={!authed || processing}
+          disabled={processing}
           onClick={restore}
         >
           {processing ? '修复中…' : '开始修复'}
