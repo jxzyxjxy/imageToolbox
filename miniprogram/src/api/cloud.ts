@@ -145,18 +145,23 @@ export async function uploadImage(filePath: string): Promise<string> {
       filePath,
       success: (res) => {
         // 登记中转图，供 cleanup 定时云函数清理（失败不影响主流程）
+        // 注意：集合名必须与 yt_cleanup 读取的 yt_storage_files 一致，
+        // 否则 inputs 永远不会被登记，定时清理空转，云存储会持续膨胀直至配额超限
         try {
           wx.cloud
             .database()
-            .collection('storage_files')
+            .collection('yt_storage_files')
             .add({ data: { fileID: res.fileID, kind: 'inputs', createdAt: new Date() } })
-            .catch(() => undefined);
+            .catch((e: unknown) => console.error('[cloud] 登记中转图失败:', JSON.stringify(e)));
         } catch {
-          // 集合未创建/无权限时忽略，云函数入口有兜底登记
+          // 集合未创建/无权限时忽略
         }
         resolve(res.fileID);
       },
-      fail: (err) => reject(new Error(err.message || '图片上传失败')),
+      fail: (err) => {
+        console.error('[cloud] uploadFile 失败:', JSON.stringify(err));
+        reject(new Error(err.message || '图片上传失败'));
+      },
     });
   });
 }

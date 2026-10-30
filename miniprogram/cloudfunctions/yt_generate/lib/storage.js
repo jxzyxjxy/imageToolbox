@@ -8,6 +8,11 @@ function resultPath(openid, ext) {
 /** 下载云存储文件，返回 Buffer */
 async function download(cloud, fileID) {
   const res = await cloud.downloadFile({ fileID });
+  // 输入中转图登记（管理端权限，稳定写入）：inputs 若不登记则永不被清理，
+  // 云存储持续膨胀直至配额超限，上传全线失败
+  if (fileID.includes('/inputs/')) {
+    await register(cloud, fileID, 'inputs', '');
+  }
   return res.fileContent;
 }
 
