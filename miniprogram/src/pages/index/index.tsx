@@ -133,23 +133,24 @@ export default function Index() {
         <Text className="section__title">全部工具</Text>
         <View className="grid">
           {TOOLS.filter((tool) => tool.ready).map((tool) => (
-            <View
-              key={tool.key}
-              className={`card ${tool.ready ? '' : 'card--disabled'}`}
-              onClick={() => handleTap(tool)}
-            >
-              <View className="card__tag-wrap">
-                {tool.ready ? (
-                  <Text className="card__tag card__tag--ready">可用</Text>
-                ) : (
-                  <Text className="card__tag card__tag--soon">敬请期待</Text>
-                )}
+            <View className="cell" key={tool.key}>
+              <View
+                className={`card ${tool.ready ? '' : 'card--disabled'}`}
+                onClick={() => handleTap(tool)}
+              >
+                <View className="card__tag-wrap">
+                  {tool.ready ? (
+                    <Text className="card__tag card__tag--ready">可用</Text>
+                  ) : (
+                    <Text className="card__tag card__tag--soon">敬请期待</Text>
+                  )}
+                </View>
+                <View className="card__icon" style={{ background: tool.gradient }}>
+                  <Text className="card__icon-glyph">{tool.icon}</Text>
+                </View>
+                <Text className="card__name">{tool.name}</Text>
+                <Text className="card__desc">{tool.desc}</Text>
               </View>
-              <View className="card__icon" style={{ background: tool.gradient }}>
-                <Text className="card__icon-glyph">{tool.icon}</Text>
-              </View>
-              <Text className="card__name">{tool.name}</Text>
-              <Text className="card__desc">{tool.desc}</Text>
             </View>
           ))}
         </View>

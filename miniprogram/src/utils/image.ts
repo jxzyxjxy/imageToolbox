@@ -105,7 +105,12 @@ export async function saveToAlbum(filePath: string): Promise<void> {
           if (r.confirm) Taro.openSetting();
         },
       });
+    } else if (msg.includes('privacy')) {
+      // 《用户隐私保护指引》未声明相册权限或声明审核中——后台配置生效后自动恢复
+      console.error('[save] privacy not declared:', msg);
+      await Taro.showToast({ title: '功能配置更新中，请稍后再试', icon: 'none', duration: 2500 });
     } else {
+      console.error('[save] 保存失败:', msg);
       await Taro.showToast({ title: '保存失败', icon: 'none' });
     }
   }

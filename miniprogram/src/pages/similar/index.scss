@@ -214,14 +214,16 @@
   }
 }
 
-/* 结果 */
+/* 结果两列：同首页网格，弃 gap + calc（部分机型竖排），改纯 50% 宽 + 内衬间隙 */
 .results {
   display: flex;
   flex-wrap: wrap;
-  gap: 20rpx;
+  margin: 0 -10rpx;
 
   &__item {
-    width: calc(50% - 10rpx);
+    width: 50%;
+    box-sizing: border-box;
+    padding: 0 10rpx 20rpx;
     display: flex;
     flex-direction: column;
   }

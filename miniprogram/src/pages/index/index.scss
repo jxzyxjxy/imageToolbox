@@ -77,15 +77,22 @@
   }
 }
 
+/* 两列网格：不用 flex gap + calc 组合——部分机型（Skyline/老 X5 内核）rpx 舍入后
+   两卡加 gap 超 100% 触发换行，整列竖排。改纯百分比 50% + cell 内衬提供间隙。 */
 .grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 28rpx;
+  margin: 0 -14rpx;
+}
+
+.cell {
+  width: 50%;
+  box-sizing: border-box;
+  padding: 0 14rpx 28rpx;
 }
 
 .card {
   position: relative;
-  width: calc(50% - 14rpx);
   background: #ffffff;
   border-radius: 40rpx;
   padding: 40rpx 32rpx;
