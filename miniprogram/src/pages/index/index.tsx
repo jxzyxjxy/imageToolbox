@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import UserProfile from '@/components/UserProfile';
 import { maybeShowInterstitialAd } from '@/utils/ad';
 import { SHOW_LOGIN_ENTRY } from '@/config';
-import { TAB_SELECTED_EVENT, TAB_NAVIGATE_EVENT, TabIndex } from '@/custom-tab-bar/events';
+import { TAB_NAVIGATE_EVENT } from '@/custom-tab-bar/events';
 import { switchTabFromPage } from '@/custom-tab-bar/router';
 import './index.scss';
 
@@ -108,7 +108,7 @@ export default function Index() {
   useEffect(() => {
     const nav = (pagePath: string, fromIndex: number) => {
       if (fromIndex !== 0) return;
-      switchTabFromPage(pagePath, 0);
+      switchTabFromPage(pagePath);
     };
     Taro.eventCenter.on(TAB_NAVIGATE_EVENT, nav);
     return () => {
@@ -119,8 +119,6 @@ export default function Index() {
   // 进场插屏广告（已配置广告位 ID 时生效；每次冷启动最多一次）
   useDidShow(() => {
     setTimeout(() => maybeShowInterstitialAd(), 800);
-    // 自定义 tabBar：本页是第 0 个 tab，显示时通过事件总线同步高亮
-    Taro.eventCenter.trigger(TAB_SELECTED_EVENT, 0 as TabIndex);
   });
 
   const handleTap = (tool: ToolItem) => {
