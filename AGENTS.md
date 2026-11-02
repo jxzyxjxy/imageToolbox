@@ -40,6 +40,13 @@
 - 安装所有依赖：`pnpm install`
 - 移除依赖：`pnpm remove <package>`
 
+## Git 工作流规范（强制）
+
+- **每次代码改动提交后必须立即 `git push`**（用户明确要求）：只 commit 不 push = 未完成，用户需要直接从远程拉取验证。
+- push 后用 `git ls-remote origin <branch>` 核实远程 hash 与本地一致，确认推送成功。
+- 当前活跃分支：`feat/miniprogram`（小程序开发主线，含视频功能）、`fix/home-grid-vertical`（线上图片版修复线，基点 8a0d825，不含视频）。改动落在哪个分支，就 push 哪个分支。
+- 小程序构建产物 `miniprogram/dist/` 跟随源码一起提交，保持产物与源码同步。
+
 ## 开发规范
 
 ### 编码规范
