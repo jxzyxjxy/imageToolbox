@@ -17,9 +17,11 @@ export default defineAppConfig({
     'pages/video/parse/index',
   ],
   tabBar: {
-    // 官方 tabBar（原生管理）：切页与高亮由微信内部保证一致，零胶水零同步逻辑。
-    // 图标用 jpg：无透明/索引色等编码形态差异，规避 png 在部分环境的图标裂图问题；
-    // tabBar 背景纯白，白底 jpg 与透明 png 视觉一致。
+    // 自定义 tabBar：实测该环境下官方 tabBar 图标文件（png/jpg 各种编码形态）全部裂图——
+    // 「从代码包加载图标文件」这条机制本身不可用，故用组件自绘 + base64 内联图标，
+    // 从机制上消除文件加载环节；切页与高亮同步均走事件总线（页面上下文执行，带全路径兜底）。
+    // list 的 iconPath 仍需合法（页面注册依赖 list），jpg 文件保留在包内。
+    custom: true,
     color: '#94a3b8',
     selectedColor: '#6366f1',
     backgroundColor: '#ffffff',
