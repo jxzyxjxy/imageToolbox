@@ -41,9 +41,9 @@ export default defineAppConfig({
       },
     ],
   },
-  // 注意：不要开启 lazyCodeLoading: 'requiredComponents'——
-  // 已知问题：开启后部分基础库版本 tabBar 图标裂图/不显示，且 tab 页首次打开需现场注入组件导致首切明显变慢。
-  // 全量注入的体积代价可接受（主包 < 2MB），换取 tabBar 图标稳定显示与 tab 切换瞬时响应。
+  // 组件按需注入：发布体检要求开启。与 custom-tab-bar + base64 图标方案兼容
+  // （历史上 15bd236~79b0e04 期间两者共存运行正常；图标走 base64 内联渲染，不依赖资源注入机制）
+  lazyCodeLoading: 'requiredComponents',
   window: {
     backgroundTextStyle: 'light',
     backgroundColor: '#f5f6fa',
