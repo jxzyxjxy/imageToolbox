@@ -1,5 +1,6 @@
 import { View, Text } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
+import { TAB_SELECTED_EVENT, TabIndex } from '@/custom-tab-bar/events';
 import './index.scss';
 
 interface VideoToolItem {
@@ -67,12 +68,9 @@ const VIDEO_TOOLS: VideoToolItem[] = [
 ];
 
 export default function VideoIndex() {
-  // 自定义 tabBar：本页是第 1 个 tab，显示时同步选中态
+  // 自定义 tabBar：本页是第 1 个 tab，显示时通过事件总线同步高亮
   useDidShow(() => {
-    const tabBar = Taro.getTabBar?.(Taro.getCurrentInstance().page) as
-      | { setData?: (data: Record<string, unknown>) => void }
-      | undefined;
-    tabBar?.setData?.({ selected: 1 });
+    Taro.eventCenter.trigger(TAB_SELECTED_EVENT, 1 as TabIndex);
   });
 
   const handleTap = (tool: VideoToolItem) => {
