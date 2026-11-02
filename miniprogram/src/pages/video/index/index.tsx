@@ -1,5 +1,5 @@
 import { View, Text } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
 import './index.scss';
 
 interface VideoToolItem {
@@ -67,6 +67,14 @@ const VIDEO_TOOLS: VideoToolItem[] = [
 ];
 
 export default function VideoIndex() {
+  // 自定义 tabBar：本页是第 1 个 tab，显示时同步选中态
+  useDidShow(() => {
+    const tabBar = Taro.getTabBar?.(Taro.getCurrentInstance().page) as
+      | { setData?: (data: Record<string, unknown>) => void }
+      | undefined;
+    tabBar?.setData?.({ selected: 1 });
+  });
+
   const handleTap = (tool: VideoToolItem) => {
     if (!tool.ready || !tool.path) {
       Taro.showToast({ title: '敬请期待', icon: 'none' });

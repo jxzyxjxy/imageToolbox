@@ -17,6 +17,9 @@ export default defineAppConfig({
     'pages/video/parse/index',
   ],
   tabBar: {
+    // 自定义 tabBar：原生 tabBar 的图标资源加载在部分环境始终裂图，
+    // 改为 custom-tab-bar 组件自绘（base64 图标），机制上消除图标加载失败
+    custom: true,
     color: '#94a3b8',
     selectedColor: '#6366f1',
     backgroundColor: '#ffffff',
