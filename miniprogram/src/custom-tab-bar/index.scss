@@ -19,6 +19,10 @@
     justify-content: center;
     height: 104rpx;
     gap: 6rpx;
+
+    &:active {
+      opacity: 0.55; // 点击瞬间按压反馈（高亮不乐观更新，靠它补手感）
+    }
   }
 
   &__icon {

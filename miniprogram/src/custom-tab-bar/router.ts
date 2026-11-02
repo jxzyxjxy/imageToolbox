@@ -21,9 +21,12 @@ export function switchTabFromPage(pagePath: string): void {
     try {
       Taro.reLaunch({ url: pagePath }).catch((e: unknown) => {
         console.error('[ctab] reLaunch fail:', pagePath, e);
+        // 用户可见的失败信号（不用翻控制台就能知道切换失败并重试）
+        Taro.showToast({ title: '页面切换失败，请重试', icon: 'none', duration: 2000 });
       });
     } catch (e) {
       console.error('[ctab] reLaunch sync error:', pagePath, e);
+      Taro.showToast({ title: '页面切换失败，请重试', icon: 'none', duration: 2000 });
     }
   };
 

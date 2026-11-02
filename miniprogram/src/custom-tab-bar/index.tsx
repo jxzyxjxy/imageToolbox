@@ -1,6 +1,5 @@
 import { View, Image, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
 import { TAB_ICONS } from './custom-tab-bar.icons';
 import { TAB_NAVIGATE_EVENT } from './events';
 import './index.scss';
@@ -60,10 +59,19 @@ function resolveSelfIndex(): number {
  * （组件上下文调路由 API 已实测不可靠），见 router.ts。
  */
 export default function CustomTabBar() {
-  const [selected] = useState(resolveSelfIndex);
+  /**
+   * 高亮恒等于实例归属（resolveSelfIndex 幂等：同一实例永远在同一个页面）。
+   * 刻意不做乐观更新——乐观值会污染发起页实例（tab 页与 tabBar 实例被框架缓存，
+   * 切回时污染值残留：高亮错位 + idx===selected 早退死锁「点了没反应」）。
+   * 原生 tabBar 的行为本就是「切页完成后高亮跟随」，点击瞬间用 :active 按压反馈补足。
+   */
+  const selected = resolveSelfIndex();
 
   const handleTap = (idx: number, pagePath: string) => {
-    // 带上发起页索引，监听方只允许发起页执行跳转，避免多个 tab 页监听器重复触发
+    if (idx === selected) return;
+    // 切页动作广播给页面上下文执行（组件上下文调路由 API 实测不可靠），
+    // 带上发起页索引，监听方只允许发起页执行跳转，避免多个 tab 页监听器重复触发。
+    // 导航失败时高亮不动——高亮与页面一致性天然保持，无需回滚
     Taro.eventCenter.trigger(TAB_NAVIGATE_EVENT, pagePath, idx);
   };
 
