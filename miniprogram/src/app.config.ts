@@ -39,8 +39,9 @@ export default defineAppConfig({
       },
     ],
   },
-  // 组件按需注入：减小启动包体积，发布检测要求
-  lazyCodeLoading: 'requiredComponents',
+  // 注意：不要开启 lazyCodeLoading: 'requiredComponents'——
+  // 已知问题：开启后部分基础库版本 tabBar 图标裂图/不显示，且 tab 页首次打开需现场注入组件导致首切明显变慢。
+  // 全量注入的体积代价可接受（主包 < 2MB），换取 tabBar 图标稳定显示与 tab 切换瞬时响应。
   window: {
     backgroundTextStyle: 'light',
     backgroundColor: '#f5f6fa',
