@@ -2,21 +2,8 @@ import { View, Image, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useEffect, useState } from 'react';
 import { TAB_ICONS } from './custom-tab-bar.icons';
-import { TAB_SELECTED_EVENT, TabIndex } from './events';
+import { TAB_SELECTED_EVENT, TAB_NAVIGATE_EVENT } from './events';
 import './index.scss';
-
-/**
- * 微信原生路由 API。
- * Taro 包装层（Taro.switchTab）在 custom-tab-bar 组件上下文内调用不生效（Taro 4 已知坑），
- * 必须直调 wx.switchTab，这里给出最小类型声明。
- */
-declare const wx: {
-  switchTab: (opts: {
-    url: string;
-    success?: () => void;
-    fail?: (err: { errMsg: string }) => void;
-  }) => void;
-};
 
 interface TabItem {
   pagePath: string;
@@ -47,6 +34,8 @@ const TABS: TabItem[] = [
  * 高亮同步机制：微信 custom tabBar 下每个 tab 页持有独立组件实例，且 Taro React 组件状态
  * 由 React 管理、原生 setData 桥接不可靠——因此各 tab 页 onShow 时通过事件总线广播选中索引，
  * 本组件监听后走纯 React setSelected 更新，与图标渲染同链路，杜绝高亮与页面错位。
+ * 切页动作同样走事件总线：本组件点击后广播「目标路径 + 发起页索引」，
+ * 由发起页在页面上下文内执行路由跳转（组件上下文调路由 API 已证实不可靠）。
  */
 export default function CustomTabBar() {
   const [selected, setSelected] = useState(0);
@@ -61,21 +50,10 @@ export default function CustomTabBar() {
 
   const handleSwitch = (idx: number, pagePath: string) => {
     if (idx === selected) return;
-    const prev = selected;
+    // 高亮先走（快速反馈），切页动作广播给页面上下文执行（组件上下文调路由 API 不可靠）；
+    // 带上发起页索引，监听方只允许发起页执行跳转，避免多个 tab 页监听器重复触发。
     setSelected(idx);
-    // 主通道：原生 wx.switchTab（custom tabBar 组件上下文内最可靠）
-    wx.switchTab({
-      url: pagePath,
-      fail: (err: { errMsg: string }) => {
-        console.error('[ctab] switchTab fail, fallback to reLaunch:', pagePath, err);
-        // 兜底通道：reLaunch 可跳任意已注册页面（含 tabBar 页），保证页面必切
-        Taro.reLaunch({ url: pagePath }).catch((e: unknown) => {
-          console.error('[ctab] reLaunch fail:', pagePath, e);
-          // 双通道均失败才回滚高亮，保持与页面一致
-          setSelected(prev);
-        });
-      },
-    });
+    Taro.eventCenter.trigger(TAB_NAVIGATE_EVENT, pagePath, idx);
   };
 
   return (

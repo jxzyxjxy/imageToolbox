@@ -1,9 +1,11 @@
 import { View, Text, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
+import { useEffect } from 'react';
 import UserProfile from '@/components/UserProfile';
 import { maybeShowInterstitialAd } from '@/utils/ad';
 import { SHOW_LOGIN_ENTRY } from '@/config';
-import { TAB_SELECTED_EVENT, TabIndex } from '@/custom-tab-bar/events';
+import { TAB_SELECTED_EVENT, TAB_NAVIGATE_EVENT, TabIndex } from '@/custom-tab-bar/events';
+import { switchTabFromPage } from '@/custom-tab-bar/router';
 import './index.scss';
 
 interface ToolItem {
@@ -102,6 +104,18 @@ const TOOLS: ToolItem[] = [
 ];
 
 export default function Index() {
+  // tabBar 导航：本页（tab 0）作为发起页时，在页面上下文内执行跳转
+  useEffect(() => {
+    const nav = (pagePath: string, fromIndex: number) => {
+      if (fromIndex !== 0) return;
+      switchTabFromPage(pagePath, 0);
+    };
+    Taro.eventCenter.on(TAB_NAVIGATE_EVENT, nav);
+    return () => {
+      Taro.eventCenter.off(TAB_NAVIGATE_EVENT, nav);
+    };
+  }, []);
+
   // 进场插屏广告（已配置广告位 ID 时生效；每次冷启动最多一次）
   useDidShow(() => {
     setTimeout(() => maybeShowInterstitialAd(), 800);

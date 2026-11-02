@@ -1,6 +1,8 @@
 import { View, Text } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import { TAB_SELECTED_EVENT, TabIndex } from '@/custom-tab-bar/events';
+import { useEffect } from 'react';
+import { TAB_SELECTED_EVENT, TAB_NAVIGATE_EVENT, TabIndex } from '@/custom-tab-bar/events';
+import { switchTabFromPage } from '@/custom-tab-bar/router';
 import './index.scss';
 
 interface VideoToolItem {
@@ -68,6 +70,18 @@ const VIDEO_TOOLS: VideoToolItem[] = [
 ];
 
 export default function VideoIndex() {
+  // tabBar 导航：本页（tab 1）作为发起页时，在页面上下文内执行跳转
+  useEffect(() => {
+    const nav = (pagePath: string, fromIndex: number) => {
+      if (fromIndex !== 1) return;
+      switchTabFromPage(pagePath, 1);
+    };
+    Taro.eventCenter.on(TAB_NAVIGATE_EVENT, nav);
+    return () => {
+      Taro.eventCenter.off(TAB_NAVIGATE_EVENT, nav);
+    };
+  }, []);
+
   // 自定义 tabBar：本页是第 1 个 tab，显示时通过事件总线同步高亮
   useDidShow(() => {
     Taro.eventCenter.trigger(TAB_SELECTED_EVENT, 1 as TabIndex);
