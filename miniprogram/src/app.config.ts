@@ -17,9 +17,9 @@ export default defineAppConfig({
     'pages/video/parse/index',
   ],
   tabBar: {
-    // 自定义 tabBar：原生 tabBar 的图标资源加载在部分环境始终裂图，
-    // 改为 custom-tab-bar 组件自绘（base64 图标），机制上消除图标加载失败
-    custom: true,
+    // 官方 tabBar（原生管理）：切页与高亮由微信内部保证一致，零胶水零同步逻辑。
+    // 图标用 jpg：无透明/索引色等编码形态差异，规避 png 在部分环境的图标裂图问题；
+    // tabBar 背景纯白，白底 jpg 与透明 png 视觉一致。
     color: '#94a3b8',
     selectedColor: '#6366f1',
     backgroundColor: '#ffffff',
@@ -28,14 +28,14 @@ export default defineAppConfig({
       {
         pagePath: 'pages/index/index',
         text: '图片工具',
-        iconPath: 'assets/tabbar/pic-off.png',
-        selectedIconPath: 'assets/tabbar/pic-on.png',
+        iconPath: 'assets/tabbar/pic-off.jpg',
+        selectedIconPath: 'assets/tabbar/pic-on.jpg',
       },
       {
         pagePath: 'pages/video/index/index',
         text: '视频工具',
-        iconPath: 'assets/tabbar/video-off.png',
-        selectedIconPath: 'assets/tabbar/video-on.png',
+        iconPath: 'assets/tabbar/video-off.jpg',
+        selectedIconPath: 'assets/tabbar/video-on.jpg',
       },
     ],
   },
