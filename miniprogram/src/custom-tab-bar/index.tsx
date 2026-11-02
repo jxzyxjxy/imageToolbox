@@ -1,7 +1,8 @@
 import { View, Image, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TAB_ICONS } from './custom-tab-bar.icons';
+import { TAB_SELECTED_EVENT, TabIndex } from './events';
 import './index.scss';
 
 /**
@@ -42,10 +43,21 @@ const TABS: TabItem[] = [
 /**
  * 自定义 tabBar：原生 tabBar 的图标资源加载在某些环境始终裂图（PNG 形态/路径解析均已排除），
  * 改为组件自绘 + base64 内联图标，从机制上消除图标加载环节。
- * 选中态由各 tab 页 onShow 时通过 Taro.getTabBar(page).setData 同步。
+ *
+ * 高亮同步机制：微信 custom tabBar 下每个 tab 页持有独立组件实例，且 Taro React 组件状态
+ * 由 React 管理、原生 setData 桥接不可靠——因此各 tab 页 onShow 时通过事件总线广播选中索引，
+ * 本组件监听后走纯 React setSelected 更新，与图标渲染同链路，杜绝高亮与页面错位。
  */
 export default function CustomTabBar() {
   const [selected, setSelected] = useState(0);
+
+  useEffect(() => {
+    const sync = (idx: number) => setSelected(idx);
+    Taro.eventCenter.on(TAB_SELECTED_EVENT, sync);
+    return () => {
+      Taro.eventCenter.off(TAB_SELECTED_EVENT, sync);
+    };
+  }, []);
 
   const handleSwitch = (idx: number, pagePath: string) => {
     if (idx === selected) return;

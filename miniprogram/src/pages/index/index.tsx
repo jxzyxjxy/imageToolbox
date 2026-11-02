@@ -3,6 +3,7 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import UserProfile from '@/components/UserProfile';
 import { maybeShowInterstitialAd } from '@/utils/ad';
 import { SHOW_LOGIN_ENTRY } from '@/config';
+import { TAB_SELECTED_EVENT, TabIndex } from '@/custom-tab-bar/events';
 import './index.scss';
 
 interface ToolItem {
@@ -104,11 +105,8 @@ export default function Index() {
   // 进场插屏广告（已配置广告位 ID 时生效；每次冷启动最多一次）
   useDidShow(() => {
     setTimeout(() => maybeShowInterstitialAd(), 800);
-    // 自定义 tabBar：本页是第 0 个 tab，显示时同步选中态
-    const tabBar = Taro.getTabBar?.(Taro.getCurrentInstance().page) as
-      | { setData?: (data: Record<string, unknown>) => void }
-      | undefined;
-    tabBar?.setData?.({ selected: 0 });
+    // 自定义 tabBar：本页是第 0 个 tab，显示时通过事件总线同步高亮
+    Taro.eventCenter.trigger(TAB_SELECTED_EVENT, 0 as TabIndex);
   });
 
   const handleTap = (tool: ToolItem) => {
