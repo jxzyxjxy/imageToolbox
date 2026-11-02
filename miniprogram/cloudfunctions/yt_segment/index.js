@@ -15,15 +15,16 @@ const pixels = require('./lib/pixels');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
-/** 选择可用的分割通道：腾讯云优先，火山兜底 */
-function pickSegmentProvider() {
+/** 列出已配置的分割通道：腾讯云优先，火山兜底（任一通道调用失败可互相回落） */
+function listSegmentProviders() {
+  const list = [];
   if (process.env.TC_SECRET_ID && process.env.TC_SECRET_KEY) {
-    return { name: 'tencent-bda', humanSegment: tencent.humanSegment };
+    list.push({ name: 'tencent-bda', humanSegment: tencent.humanSegment });
   }
   if (process.env.VOLC_ACCESS_KEY && process.env.VOLC_SECRET_KEY) {
-    return { name: 'volc-cv', humanSegment: volc.humanSegment };
+    list.push({ name: 'volc-cv', humanSegment: volc.humanSegment });
   }
-  return null;
+  return list;
 }
 
 /**
@@ -75,9 +76,9 @@ exports.main = async (event) => {
     return { error: '缺少图片文件' };
   }
 
-  // 通道选择（腾讯云优先，火山兜底；都未配置则返回不可用，前端回落本地抠图）
-  const provider = pickSegmentProvider();
-  if (!provider) {
+  // 通道列表（腾讯云优先，火山兜底；都未配置则返回不可用，前端回落本地抠图）
+  const providers = listSegmentProviders();
+  if (!providers.length) {
     return {
       error: '未配置分割服务凭证（TC_SECRET_ID/TC_SECRET_KEY 或 VOLC_ACCESS_KEY/VOLC_SECRET_KEY）',
       code: 'SEGMENT_UNAVAILABLE',
@@ -100,7 +101,21 @@ exports.main = async (event) => {
     const flat = srcImg.clone().background(0xffffffff);
     const jpeg = await flat.quality(90).getBufferAsync(pixels.Jimp.MIME_JPEG);
 
-    const seg = await provider.humanSegment(jpeg.toString('base64'));
+    // 依序尝试各通道：前一个调用失败（配额耗尽/欠费/网络）自动回落下一个
+    let seg = null;
+    let provider = null;
+    let lastErr = null;
+    for (const p of providers) {
+      try {
+        seg = await p.humanSegment(jpeg.toString('base64'));
+        provider = p;
+        break;
+      } catch (e) {
+        lastErr = e;
+        console.error(`[segment] 通道 ${p.name} 失败:`, (e && e.message) || e);
+      }
+    }
+    if (!seg) throw lastErr;
 
     let outImg;
     if (seg.image) {

@@ -310,10 +310,11 @@ export default function IdPhoto() {
         setNote('AI 已自动去除背景，直接选背景色与规格即可');
         await generate(chosen, refColor, 16, bgColor, spec, segPath);
         return;
-      } catch {
+      } catch (segErr) {
         setUploading(false);
         setSegmenting(false);
-        setNote('AI 抠图不可用，已切换本地抠图模式');
+        console.error('[segment] AI 分割失败，降级本地抠图:', segErr);
+        setNote('AI 抠图服务繁忙，已切换基础抠图（适合纯色背景）');
       }
 
       // 2. 兜底：本地采样四角背景色 + 泛洪抠图

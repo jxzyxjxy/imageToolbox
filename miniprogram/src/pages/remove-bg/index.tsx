@@ -140,10 +140,11 @@ export default function RemoveBg() {
         setNote('AI 已自动去除背景，可直接保存');
         await runCutout(chosen, refColor, 16, segPath);
         return;
-      } catch {
+      } catch (segErr) {
         setUploading(false);
         setSegmenting(false);
-        setNote('AI 抠图不可用，已切换本地模式');
+        console.error('[segment] AI 分割失败，降级本地抠图:', segErr);
+        setNote('AI 抠图服务繁忙，已切换基础抠图（适合纯色背景）');
       }
 
       // 2. 兜底：本地采样背景色 + 泛洪抠图（适合纯色背景）
