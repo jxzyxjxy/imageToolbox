@@ -69,10 +69,12 @@ export default function CustomTabBar() {
 
   const handleTap = (idx: number, pagePath: string) => {
     if (idx === selected) return;
-    // 切页动作广播给页面上下文执行（组件上下文调路由 API 实测不可靠），
-    // 带上发起页索引，监听方只允许发起页执行跳转，避免多个 tab 页监听器重复触发。
+    // 切页动作广播给页面上下文执行（组件上下文调路由 API 实测不可靠）。
+    // 第三参数必须是「发起页索引」（即 selected/实例归属）：页面监听方以
+    // fromIndex === 自身索引 过滤、只执行自己页发起的跳转——若误传目标 idx，
+    // 发起页会被自己的过滤逻辑拒绝，而目标页尚未加载无监听者，事件落空（完全无反应）。
     // 导航失败时高亮不动——高亮与页面一致性天然保持，无需回滚
-    Taro.eventCenter.trigger(TAB_NAVIGATE_EVENT, pagePath, idx);
+    Taro.eventCenter.trigger(TAB_NAVIGATE_EVENT, pagePath, selected);
   };
 
   return (
