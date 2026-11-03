@@ -46,7 +46,6 @@ export default function VideoCompress() {
         mediaType: ['video'],
         sourceType: ['album', 'camera'],
         maxDuration: 60,
-        sizeLimit: 200 * 1024 * 1024,
       });
       const f = res.tempFiles[0];
       if (!f) return;
@@ -75,7 +74,14 @@ export default function VideoCompress() {
       const bitrate = Math.round(
         Math.min(Math.max(orig * (lv ? lv.ratio : 0.5), lv ? lv.min : 400), lv ? lv.max : 4000),
       );
-      const res = await Taro.compressVideo({ src: video.path, bitrate });
+      const res = await Taro.compressVideo({
+        src: video.path,
+        bitrate,
+        // Taro 类型要求三参齐传（微信端 bitrate 主导，quality 仅 iOS 生效）
+        quality: lv ? lv.key : 'medium',
+        fps: 30,
+        resolution: 1,
+      });
       const outSize = res.size || 0;
       if (outSize > 0 && outSize < video.size) {
         setResult({ path: res.tempFilePath, size: outSize });

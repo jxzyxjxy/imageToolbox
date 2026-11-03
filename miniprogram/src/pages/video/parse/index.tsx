@@ -73,12 +73,27 @@ export default function VideoParse() {
     try {
       let temp: string;
       if (result.clientDownload && result.play) {
-        // 抖音：前端直下播放接口（用户网络可通，自动跟随 302 到 CDN）
-        const dl = await Taro.downloadFile({ url: result.play });
-        if (dl.statusCode !== 200) {
-          throw new Error(`视频下载失败（HTTP ${dl.statusCode}）`);
+        // 抖音/豆包等：前端直下播放直链（用户网络可通，自动跟随 302 到 CDN）
+        try {
+          const dl = await Taro.downloadFile({ url: result.play });
+          if (dl.statusCode !== 200) {
+            throw new Error(`视频下载失败（HTTP ${dl.statusCode}）`);
+          }
+          temp = dl.tempFilePath;
+        } catch (err: unknown) {
+          // downloadFile 域名白名单拦截：给出需配置的具体域名，方便后台自查
+          const errMsg = err && typeof err === 'object' && 'errMsg' in err ? String((err as { errMsg: string }).errMsg) : err instanceof Error ? err.message : '';
+          if (errMsg.includes('url not in domain list')) {
+            let host = '';
+            try {
+              host = new URL(result.play).hostname;
+            } catch {
+              host = '';
+            }
+            throw new Error(`需在微信公众平台 downloadFile 合法域名中添加：${host || '视频源域名'}`);
+          }
+          throw err instanceof Error ? err : new Error('视频下载失败，请稍后重试');
         }
-        temp = dl.tempFilePath;
       } else {
         temp = await downloadTemp(result.videoFileID as string);
       }

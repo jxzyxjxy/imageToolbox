@@ -11,10 +11,17 @@
  * 返回: { ok, videoFileID, coverFileID, title, size, note, error? }
  *
  * 支持平台（按 URL 识别）：
- *   抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据（ttwid 对抗 spider）
- *   豆包   doubao.com/video-sharing     —— POST /creativity/share/get_video_share_info
+ *   抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据；播放接口机房 IP 不可达，
+ *                                           clientDownload 模式（前端直下）
+ *   豆包   doubao.com/video-sharing     —— POST /creativity/share/get_video_share_info；
+ *                                           365yg CDN 机房 IP 不可达，clientDownload 模式；
+ *                                           官方分享流含水印（游客态无去水印通道）
  *   可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
+ *   即梦   jimeng.jianying.com/s/{code} —— 302 取 id → POST /mweb/v1/mget_item_info
  *   其他   .mp4 等视频直链直接转存
+ *
+ * clientDownload 通用降级：任何平台云函数下载失败（CDN 风控）时，
+ * 自动降级为返回 play 直链由小程序端直下，不再向前端报死错误。
  */
 const cloud = require('wx-server-sdk');
 const https = require('https');
@@ -442,7 +449,19 @@ async function parseDoubao(url) {
   }
   const title = String((j.data && j.data.prompt) || '').slice(0, 80);
   const cover = (j.data && j.data.play_info && j.data.play_info.poster_url) || '';
-  return { ok: true, play, title, cover, note: '已取回豆包分享视频', referer: 'https://www.doubao.com/' };
+  // 豆包 CDN（365yg，字节风控体系）对机房 IP 拒下（与抖音同源），云函数下载失败实证；
+  // 改为 clientDownload 模式：返回 play 直链由小程序端直下（用户网络可通）。
+  // 注意：豆包官方分享流烧录动态水印（lr=video_gen_watermark_dyn），游客态无去水印
+  // 通道（get_without_watermark 为登录态内部接口），此为平台限制。
+  return {
+    ok: true,
+    play,
+    title,
+    cover,
+    clientDownload: true,
+    note: '豆包官方分享流含水印（平台限制）',
+    referer: 'https://www.doubao.com/',
+  };
 }
 
 /* ---------------- 可灵（klingai.com/h5-app/share） ----------------
@@ -624,6 +643,26 @@ function extOf(url, fallback) {
 
 /* ---------------- 主流程 ---------------- */
 
+/** 转存封面到云存储（可选，失败不阻断——前端有无封面兜底样式）；返回 fileID 或空串 */
+async function uploadCoverIfAny(parsed, openid) {
+  if (!parsed.cover) return '';
+  try {
+    const coverBuf = await downloadBuffer(parsed.cover, 10000, 20 * 1024 * 1024, parsed.referer || '');
+    if (coverBuf && coverBuf.length > 0) {
+      const coverExt = extOf(parsed.cover, 'jpeg');
+      const coverUpload = await cloud.uploadFile({
+        cloudPath: resultPath(openid, coverExt),
+        fileContent: coverBuf,
+      });
+      await register(coverUpload.fileID, openid);
+      return coverUpload.fileID;
+    }
+  } catch (e) {
+    console.warn('[video-parse] cover skipped:', e && e.message ? e.message : e);
+  }
+  return '';
+}
+
 exports.main = async (event) => {
   const text = String((event && event.text) || '')
     .trim()
@@ -673,23 +712,7 @@ exports.main = async (event) => {
   // 服务器侧无法下载。改由小程序端 Taro.downloadFile 直下（走用户手机网络，
   // 与真实设备同源，接口正常 302 到 CDN）。云函数仅转存封面（douyinpic 图床可通）。
   if (parsed.clientDownload) {
-    let coverFileID = '';
-    if (parsed.cover) {
-      try {
-        const coverBuf = await downloadBuffer(parsed.cover, 10000, 20 * 1024 * 1024, parsed.referer || '');
-        if (coverBuf && coverBuf.length > 0) {
-          const coverExt = extOf(parsed.cover, 'jpeg');
-          const coverUpload = await cloud.uploadFile({
-            cloudPath: resultPath(openid, coverExt),
-            fileContent: coverBuf,
-          });
-          coverFileID = coverUpload.fileID;
-          await register(coverFileID, openid);
-        }
-      } catch (e) {
-        console.warn('[video-parse] douyin cover skipped:', e && e.message ? e.message : e);
-      }
-    }
+    const coverFileID = await uploadCoverIfAny(parsed, openid);
     return {
       ok: true,
       clientDownload: true,
@@ -720,12 +743,21 @@ exports.main = async (event) => {
     }
   }
   if (!videoBuf) {
+    // 云函数（机房 IP）下载被目标 CDN 风控：不再死报错，降级为客户端直下
+    // （与抖音/豆包同架构——返回 play 直链，小程序端用用户网络下载）。
     const msg = (lastDlErr && lastDlErr.message) || '';
-    console.error('[video-parse] download failed:', msg, '| candidates:', dlCandidates.length);
-    if (msg.includes('超时')) return { ok: false, error: '视频下载超时，请重试' };
+    console.error('[video-parse] download failed, fallback to clientDownload:', msg, '| candidates:', dlCandidates.length);
+    if (msg.includes('200MB')) return { ok: false, error: msg };
+    const coverFileID = await uploadCoverIfAny(parsed, openid);
     return {
-      ok: false,
-      error: '抖音视频下载通道当前受限（平台风控），可改用豆包/可灵分享链接，或稍后重试',
+      ok: true,
+      clientDownload: true,
+      play: dlCandidates[0],
+      title: parsed.title || '',
+      coverFileID,
+      size: 0,
+      note: '已取回视频源，保存时由手机网络直下',
+      fallback: true,
     };
   }
 
