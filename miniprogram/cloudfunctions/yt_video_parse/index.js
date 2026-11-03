@@ -158,7 +158,7 @@ function downloadBuffer(urlStr, timeoutMs = DOWNLOAD_TIMEOUT, maxBytes = MAX_VID
 /* ---------------- 链接与平台识别 ---------------- */
 
 /** POST JSON 请求（返回原始 headers，供 set-cookie 提取） */
-function requestPostJson(urlStr, bodyObj, extraHeaders) {
+function requestPostJson(urlStr, bodyObj, extraHeaders, timeoutMs) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
     const payload = Buffer.from(JSON.stringify(bodyObj));
@@ -173,7 +173,7 @@ function requestPostJson(urlStr, bodyObj, extraHeaders) {
           'User-Agent': MOBILE_UA,
           ...(extraHeaders || {}),
         },
-        timeout: 10000,
+        timeout: timeoutMs || 10000,
       },
       (res) => {
         const chunks = [];
@@ -714,7 +714,7 @@ async function parseDoubaoThread(url) {
         title,
         cover,
         note: '已取回豆包无水印原片',
-        referer: 'https://www.doubao.com/',
+        referer: '', // fplay 直链（douyinvod 系 CDN）带 Referer 有防盗链 403 风险，实测不带更稳
       };
     } catch (err) {
       lastErr = (err && err.message) || '请求异常';
@@ -795,7 +795,8 @@ async function callZacaoParse(shareUrl) {
   const apiKey = String(process.env.ZACAO_API_KEY || '').trim();
   if (apiKey) headers['X-API-Key'] = apiKey;
   try {
-    const res = await requestPostJson('https://video.zacao.top/api/parse', { text: shareUrl }, headers);
+    // 聚合解析耗时较长（实测 10~20s），超时放宽到 25s，避免慢响应被误判为失败
+    const res = await requestPostJson('https://video.zacao.top/api/parse', { text: shareUrl }, headers, 25000);
     if (res.status !== 200) return null;
     let j;
     try {
@@ -816,11 +817,16 @@ async function parseDoubao(url) {
   if (!shareId || !vid) {
     return { ok: false, error: '豆包链接缺少分享参数，请使用 App 内「复制链接」获得的完整分享' };
   }
+  // 自备凭证：DOUBAO_COOKIE（豆包网页端登录 Cookie）。账号开通「去除AI生成水印」
+  // 后（专业版无品牌水印），官方分享接口在登录态下可能直接下发无水印流。
+  const extraHeaders = {};
+  const doubaoCookie = String(process.env.DOUBAO_COOKIE || '').trim();
+  if (doubaoCookie) extraHeaders['Cookie'] = doubaoCookie;
   const res = await requestPostJson('https://www.doubao.com/creativity/share/get_video_share_info', {
     share_id: shareId,
     vid,
     creation_id: '',
-  });
+  }, extraHeaders);
   if (res.status !== 200) {
     return { ok: false, error: '豆包服务无响应，请稍后重试' };
   }
@@ -834,8 +840,24 @@ async function parseDoubao(url) {
   if (!play) {
     return { ok: false, error: '豆包视频解析失败，请确认分享链接有效（作品可能已删除）' };
   }
+  const backup = (j.data && j.data.play_info && j.data.play_info.backup) || '';
   const title = String((j.data && j.data.prompt) || '').slice(0, 80);
   const cover = (j.data && j.data.play_info && j.data.play_info.poster_url) || '';
+  // 登录态直出无水印流：官方响应 URL 带 lr=unwatermarked 即为无水印原片
+  const officialNoMark = [play, backup].find((x) => x && /lr=unwatermarked/.test(x)) || '';
+  if (officialNoMark) {
+    return {
+      ok: true,
+      play: officialNoMark,
+      playFallbacks: backup && backup !== officialNoMark ? [backup, play] : [play],
+      playNoMark: officialNoMark,
+      title,
+      cover,
+      size: 0,
+      note: '已通过登录态取回豆包无水印原片',
+      referer: '', // 365yg 匿名直链带 Referer 会触发防盗链 403，实测不带才能下载
+    };
+  }
   // 无水印链路：聚合通道（zacao 匿名可用 / xiaotuo 需 Key）返回 lr=unwatermarked
   // 原画直链（365yg CDN 对机房 IP 可达，实测 27.7MB 全量下载成功）——服务端下载转存。
   // 官方分享接口游客态仅发水印流（穷举实测），无直链时降级 clientDownload。
@@ -851,7 +873,7 @@ async function parseDoubao(url) {
       cover: noMark.cover || cover,
       size: noMark.size || 0,
       note: '已取回豆包无水印原片',
-      referer: 'https://www.doubao.com/',
+      referer: '', // 同上
     };
   }
   const hasKey = Boolean(
@@ -868,7 +890,7 @@ async function parseDoubao(url) {
     note: hasKey
       ? '无水印通道暂不可用，已降级官方流（含水印）'
       : '官方分享仅提供带水印流；聚合通道恢复后自动取无水印原片',
-    referer: 'https://www.doubao.com/',
+    referer: '', // 同上
   };
 }
 
