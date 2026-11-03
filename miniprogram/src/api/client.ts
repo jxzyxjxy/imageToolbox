@@ -143,6 +143,8 @@ export async function splitIcons(
 
 export interface ParseVideoResponse {
   ok?: boolean;
+  /** 云函数版本戳（v7+），用于确认线上部署的是最新代码 */
+  ver?: string;
   /** 转存到云存储的无水印视频（前端 downloadTemp 后保存相册） */
   videoFileID?: string;
   /** 抖音专用：视频由前端直接下载（云函数机房 IP 被播放接口拒绝，用户网络可通） */

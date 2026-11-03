@@ -39,6 +39,9 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v7） */
+const FN_VERSION = 'v7';
+
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
 /** GET 请求（页面级，小文件整包读取）；返回 { status, finalUrl, body } */
@@ -948,7 +951,7 @@ async function uploadCoverIfAny(parsed, openid) {
   return '';
 }
 
-exports.main = async (event) => {
+async function mainHandler(event) {
   const text = String((event && event.text) || '')
     .trim()
     .slice(0, 2000);
@@ -1082,4 +1085,10 @@ exports.main = async (event) => {
     size: videoBuf.length,
     note: parsed.note || '',
   };
+};
+
+/* 版本戳出口包装：任何返回（含失败）都带 ver，便于确认线上云函数版本 */
+exports.main = async (event) => {
+  const r = await mainHandler(event);
+  return { ver: FN_VERSION, ...r };
 };

@@ -53,7 +53,8 @@ export default function VideoParse() {
     try {
       const res = await parseVideoLink(text);
       if (!res.ok || (!res.videoFileID && !res.clientDownload)) {
-        Taro.showToast({ title: res.error || '解析失败，请检查链接', icon: 'none' });
+        const verTag = res.ver ? `（${res.ver}）` : '（旧版云函数，请重新部署）';
+        Taro.showToast({ title: (res.error || '解析失败，请检查链接') + verTag, icon: 'none' });
         return;
       }
       setResult(res);
@@ -188,6 +189,11 @@ export default function VideoParse() {
                 <Text className="result__size">{formatSize(result.size)}</Text>
               ) : null}
               {result.note ? <Text className="result__note">{result.note}</Text> : null}
+              {result.ver ? (
+                <Text className="result__note">解析引擎 {result.ver}</Text>
+              ) : (
+                <Text className="result__note">解析引擎过旧，请重新部署云函数</Text>
+              )}
             </View>
           </View>
           <View
