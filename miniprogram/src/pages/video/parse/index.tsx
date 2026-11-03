@@ -128,7 +128,7 @@ export default function VideoParse() {
           autoHeight
           onInput={(e) => setText(e.detail.value)}
         />
-        <Text className="card__tip">当前支持抖音分享链接，更多平台即将上线</Text>
+        <Text className="card__tip">支持抖音 / 豆包 / 可灵分享链接</Text>
       </View>
 
       {/* 结果 */}

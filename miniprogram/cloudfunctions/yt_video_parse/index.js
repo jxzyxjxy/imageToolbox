@@ -10,8 +10,11 @@
  * 登记 yt_storage_files 集合（与 yt_generate/lib/storage.js 同约定）。
  * 返回: { ok, videoFileID, coverFileID, title, size, note, error? }
  *
- * 可灵/豆包/即梦的水印为生成时烧录进画面，取回原片仍带水印且小程序端
- * 无框选修复引擎，v1 暂不开放（返回友好提示），待云端 ffmpeg 方案落地后放开。
+ * 支持平台（按 URL 识别）：
+ *   抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据（ttwid 对抗 spider）
+ *   豆包   doubao.com/video-sharing     —— POST /creativity/share/get_video_share_info
+ *   可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
+ *   其他   .mp4 等视频直链直接转存
  */
 const cloud = require('wx-server-sdk');
 const https = require('https');
@@ -85,14 +88,14 @@ async function fetchPage(url) {
 }
 
 /** 大文件下载（流式计数限流）；下载失败原因交由调用方友好化 */
-function downloadBuffer(urlStr, timeoutMs = DOWNLOAD_TIMEOUT, maxBytes = MAX_VIDEO_BYTES) {
+function downloadBuffer(urlStr, timeoutMs = DOWNLOAD_TIMEOUT, maxBytes = MAX_VIDEO_BYTES, referer = DOUYIN_REFERER) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
     const req = https.get(
       {
         hostname: u.hostname,
         path: u.pathname + u.search,
-        headers: { 'User-Agent': MOBILE_UA, Referer: DOUYIN_REFERER },
+        headers: referer ? { 'User-Agent': MOBILE_UA, Referer: referer } : { 'User-Agent': MOBILE_UA },
       },
       (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -360,6 +363,119 @@ async function parseDouyin(url) {
   return { ok: false, error: `抖音页面解析失败${detail}，请稍后重试` };
 }
 
+/* ---------------- 豆包（doubao.com/video-sharing） ----------------
+ * 分享页为纯 SPA 无 SSR，数据经 POST /creativity/share/get_video_share_info
+ * 获取（免登录、免签名，仅需 share_id + vid 参数）。返回 play_info.main 为
+ * 字节视频 CDN 直链（mp4），poster_url 为封面，prompt 为用户生成提示词。
+ * 平台自有 get_without_watermark 接口需登录态，此处取分享流。
+ */
+async function parseDoubao(url) {
+  const u = new URL(url);
+  const shareId = u.searchParams.get('share_id') || '';
+  const vid = u.searchParams.get('video_id') || u.searchParams.get('vid') || '';
+  if (!shareId || !vid) {
+    return { ok: false, error: '豆包链接缺少分享参数，请使用 App 内「复制链接」获得的完整分享' };
+  }
+  const res = await requestPostJson('https://www.doubao.com/creativity/share/get_video_share_info', {
+    share_id: shareId,
+    vid,
+    creation_id: '',
+  });
+  if (res.status !== 200) {
+    return { ok: false, error: '豆包服务无响应，请稍后重试' };
+  }
+  let j;
+  try {
+    j = JSON.parse(res.body);
+  } catch (e) {
+    return { ok: false, error: '豆包响应异常，请稍后重试' };
+  }
+  const play = j && j.code === 0 && j.data && j.data.play_info && j.data.play_info.main;
+  if (!play) {
+    return { ok: false, error: '豆包视频解析失败，请确认分享链接有效（作品可能已删除）' };
+  }
+  const title = String((j.data && j.data.prompt) || '').slice(0, 80);
+  const cover = (j.data && j.data.play_info && j.data.play_info.poster_url) || '';
+  return { ok: true, play, title, cover, note: '已取回豆包分享视频', referer: 'https://www.doubao.com/' };
+}
+
+/* ---------------- 可灵（klingai.com/h5-app/share） ----------------
+ * 分享页 SPA 的接口经 bundle 逆向确认：GET /api/app/creatives/query，
+ * 签名 SDK 以 try/catch 包裹（失败裸发），实测免签名可通。
+ * creative_type 为空时依次尝试 WORK / SKIT。响应结构未见官方文档，
+ * 用递归深搜提取首个 mp4 直链兜底。
+ */
+const KLING_ERROR_MAP = [
+  [/ReviewFailed/i, '作品在可灵平台审核未通过或已下架，无法解析'],
+  [/NotFound|NotExists|NotExist/i, '分享内容不存在或已被删除'],
+];
+
+function deepFindVideoUrl(node, depth = 0) {
+  if (depth > 12 || node == null) return '';
+  if (typeof node === 'string') {
+    return /^https?:\/\/[^\s"']+\.(mp4|m4v|mov)(\?|#|$)/i.test(node) ? node : '';
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const hit = deepFindVideoUrl(item, depth + 1);
+      if (hit) return hit;
+    }
+    return '';
+  }
+  if (typeof node === 'object') {
+    // 优先在 key 含 video/resource/url 的字段里找
+    const keys = Object.keys(node);
+    const ordered = keys
+      .filter((k) => /video|resource|url/i.test(k))
+      .concat(keys.filter((k) => !/video|resource|url/i.test(k)));
+    for (const k of ordered) {
+      const hit = deepFindVideoUrl(node[k], depth + 1);
+      if (hit) return hit;
+    }
+  }
+  return '';
+}
+
+async function parseKling(url) {
+  const u = new URL(url);
+  const creativeId = u.searchParams.get('creative_id') || u.searchParams.get('work_id') || '';
+  const rawType = u.searchParams.get('creative_type') || '';
+  if (!creativeId) {
+    return { ok: false, error: '可灵链接缺少作品 ID，请使用 App 内「复制链接」获得的完整分享' };
+  }
+  const types = rawType ? [rawType] : ['WORK', 'SKIT'];
+  let lastDetail = '';
+  for (const t of types) {
+    try {
+      const res = await requestPage(
+        `https://klingai.com/api/app/creatives/query?creativeId=${encodeURIComponent(creativeId)}&creativeType=${encodeURIComponent(t)}`,
+      );
+      if (res.status !== 200) continue;
+      let j;
+      try {
+        j = JSON.parse(res.body.toString('utf8'));
+      } catch (e) {
+        continue;
+      }
+      const play = deepFindVideoUrl(j && j.data);
+      if (play) {
+        return { ok: true, play, title: '', cover: '', note: '已取回可灵分享视频', referer: 'https://klingai.com/' };
+      }
+      if (j && j.error && j.error.type) {
+        const mapped = KLING_ERROR_MAP.find(([re]) => re.test(j.error.type));
+        if (mapped) return { ok: false, error: mapped[1] };
+        lastDetail = j.error.detail || j.error.type;
+      }
+    } catch (e) {
+      /* 尝试下一个 creative_type */
+    }
+  }
+  return {
+    ok: false,
+    error: lastDetail ? `可灵解析失败：${lastDetail}` : '可灵视频解析失败，请确认分享链接有效',
+  };
+}
+
 /* ---------------- 云存储转存（对齐 yt_generate/lib/storage.js 约定） ---------------- */
 
 function resultPath(openid, ext) {
@@ -399,7 +515,19 @@ exports.main = async (event) => {
 
   let parsed;
   if (/\.(mp4|m4v|mov|webm)(\?|#|$)/i.test(url)) {
-    parsed = { ok: true, play: url, title: '', cover: '', note: '视频直链' };
+    parsed = { ok: true, play: url, title: '', cover: '', note: '视频直链', referer: '' };
+  } else if (/doubao\.com/i.test(url)) {
+    try {
+      parsed = await parseDoubao(url);
+    } catch (err) {
+      return { ok: false, error: `豆包解析失败：${err.message || '网络异常'}` };
+    }
+  } else if (/klingai\.com/i.test(url)) {
+    try {
+      parsed = await parseKling(url);
+    } catch (err) {
+      return { ok: false, error: `可灵解析失败：${err.message || '网络异常'}` };
+    }
   } else if (/douyin\.com|iesdouyin\.com/i.test(url)) {
     try {
       parsed = await parseDouyin(url);
@@ -407,7 +535,7 @@ exports.main = async (event) => {
       return { ok: false, error: `网络请求失败：${err.message || '未知错误'}` };
     }
   } else {
-    return { ok: false, error: '暂仅支持抖音分享链接，更多平台即将上线' };
+    return { ok: false, error: '当前支持抖音 / 豆包 / 可灵分享链接，更多平台陆续上线' };
   }
   if (!parsed.ok || !parsed.play) {
     return { ok: false, error: parsed.error || '解析失败，请检查链接' };
@@ -419,7 +547,7 @@ exports.main = async (event) => {
   // 下载无水印视频并转存云存储
   let videoBuf;
   try {
-    videoBuf = await downloadBuffer(parsed.play);
+    videoBuf = await downloadBuffer(parsed.play, DOWNLOAD_TIMEOUT, MAX_VIDEO_BYTES, parsed.referer || '');
   } catch (err) {
     const msg = err.message || '';
     if (msg.includes('超时')) return { ok: false, error: '视频下载超时，请重试' };
@@ -442,7 +570,7 @@ exports.main = async (event) => {
   let coverFileID = '';
   if (parsed.cover) {
     try {
-      const coverBuf = await downloadBuffer(parsed.cover, 10000, 20 * 1024 * 1024);
+      const coverBuf = await downloadBuffer(parsed.cover, 10000, 20 * 1024 * 1024, parsed.referer || '');
       if (coverBuf && coverBuf.length > 0) {
         const coverExt = extOf(parsed.cover, 'jpeg');
         const coverUpload = await cloud.uploadFile({
