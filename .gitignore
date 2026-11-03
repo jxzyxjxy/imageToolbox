@@ -166,3 +166,4 @@ Desktop.ini
 
 # 微信小程序构建产物需要入库（用户直接用开发者工具打开，不本地构建）
 !miniprogram/dist/
+assets/
