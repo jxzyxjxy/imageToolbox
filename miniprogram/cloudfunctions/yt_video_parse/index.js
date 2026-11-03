@@ -865,9 +865,19 @@ function getDoubaoCookiePool() {
     .filter((x) => x.length > 10);
 }
 
+/** 轮询游标：随机初始化（多实例冷启动也均匀），每次解析递增取模，实现账号间均匀分摊 */
+let doubaoCookieRR = Math.floor(Math.random() * 100000);
+
+/** 从轮询起点重排 Cookie 池：起点账号优先，其后顺延（保留失效自动跳下一个的容错） */
+function rotateCookiePool(cookies) {
+  if (!cookies.length) return [];
+  const start = doubaoCookieRR++ % cookies.length;
+  return cookies.slice(start).concat(cookies.slice(0, start));
+}
+
 async function callDoubaoPlayInfo(vid) {
   if (!vid) return null;
-  const cookies = getDoubaoCookiePool();
+  const cookies = rotateCookiePool(getDoubaoCookiePool());
   for (const cookie of cookies) {
     try {
       const res = await requestPostJson(
