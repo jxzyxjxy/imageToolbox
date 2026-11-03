@@ -149,6 +149,8 @@ export interface ParseVideoResponse {
   clientDownload?: boolean;
   /** clientDownload 模式下的视频地址（play 接口，前端 downloadFile 自动跟随 302） */
   play?: string;
+  /** 无水印优先通道（字节通用播放接口构造）；下载失败前端自动降级 play */
+  playNoMark?: string;
   /** 转存后的封面图 fileID */
   coverFileID?: string;
   title?: string;

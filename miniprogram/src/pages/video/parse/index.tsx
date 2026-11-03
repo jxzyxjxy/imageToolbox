@@ -71,29 +71,42 @@ export default function VideoParse() {
     setSaving(true);
     Taro.showLoading({ title: '视频下载中…', mask: true });
     try {
-      let temp: string;
+      let temp = '';
       if (result.clientDownload && result.play) {
-        // 抖音/豆包等：前端直下播放直链（用户网络可通，自动跟随 302 到 CDN）
-        try {
-          const dl = await Taro.downloadFile({ url: result.play });
-          if (dl.statusCode !== 200) {
-            throw new Error(`视频下载失败（HTTP ${dl.statusCode}）`);
-          }
-          temp = dl.tempFilePath;
-        } catch (err: unknown) {
-          // downloadFile 域名白名单拦截：给出需配置的具体域名，方便后台自查
-          const errMsg = err && typeof err === 'object' && 'errMsg' in err ? String((err as { errMsg: string }).errMsg) : err instanceof Error ? err.message : '';
-          if (errMsg.includes('url not in domain list')) {
-            let host = '';
-            try {
-              host = new URL(result.play).hostname;
-            } catch {
-              host = '';
+        // 抖音/豆包等：前端直下播放直链（用户网络可通，自动跟随 302 到 CDN）。
+        // 豆包等平台优先尝试 playNoMark（无水印通道：字节通用播放接口），
+        // 失败（HTTP 非 200）自动降级 play（官方流）。
+        const candidates = [result.playNoMark, result.play].filter(
+          (x): x is string => typeof x === 'string' && x.length > 0,
+        );
+        let lastErr: unknown = new Error('视频下载失败，请稍后重试');
+        let downloaded = false;
+        for (const cand of candidates) {
+          try {
+            const dl = await Taro.downloadFile({ url: cand });
+            if (dl.statusCode !== 200) {
+              lastErr = new Error(`视频下载失败（HTTP ${dl.statusCode}）`);
+              continue; // 尝试下一候选
             }
-            throw new Error(`需在微信公众平台 downloadFile 合法域名中添加：${host || '视频源域名'}`);
+            temp = dl.tempFilePath;
+            downloaded = true;
+            break;
+          } catch (err: unknown) {
+            // downloadFile 域名白名单拦截：给出需配置的具体域名，方便后台自查
+            const errMsg = err && typeof err === 'object' && 'errMsg' in err ? String((err as { errMsg: string }).errMsg) : err instanceof Error ? err.message : '';
+            if (errMsg.includes('url not in domain list')) {
+              let host = '';
+              try {
+                host = new URL(cand).hostname;
+              } catch {
+                host = '';
+              }
+              throw new Error(`需在微信公众平台 downloadFile 合法域名中添加：${host || '视频源域名'}`);
+            }
+            lastErr = err instanceof Error ? err : new Error('视频下载失败，请稍后重试');
           }
-          throw err instanceof Error ? err : new Error('视频下载失败，请稍后重试');
         }
+        if (!downloaded) throw lastErr;
       } else {
         temp = await downloadTemp(result.videoFileID as string);
       }

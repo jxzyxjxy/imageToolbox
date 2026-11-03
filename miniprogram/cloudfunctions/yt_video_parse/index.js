@@ -731,15 +731,20 @@ async function parseDoubao(url) {
   const cover = (j.data && j.data.play_info && j.data.play_info.poster_url) || '';
   // 豆包 CDN（365yg，字节风控体系）对机房 IP 拒下（与抖音同源），云函数下载失败实证；
   // 改为 clientDownload 模式：返回 play 直链由小程序端直下（用户网络可通）。
-  // 注意：豆包官方分享流烧录动态水印（lr=video_gen_watermark_dyn），游客态无去水印
-  // 通道（get_without_watermark 为登录态内部接口），此为平台限制。
+  // playNoMark：豆包 vid 与抖音同为字节 vid 体系，尝试字节通用播放接口
+  // （aweme/aweme/v1/play?video_id=，抖音解析同通道）——若豆包 vid 在该体系有效，
+  // 真机直下即无水印原片；无效时前端自动降级回 play（水印流）。
+  const playNoMark = vid
+    ? `https://aweme.snssdk.com/aweme/v1/play/?video_id=${encodeURIComponent(vid)}&ratio=1080p&line=0`
+    : '';
   return {
     ok: true,
     play,
+    playNoMark,
     title,
     cover,
     clientDownload: true,
-    note: '豆包官方分享流含水印（平台限制）',
+    note: '优先尝试无水印通道，失败自动降级官方流',
     referer: 'https://www.doubao.com/',
   };
 }
@@ -998,6 +1003,7 @@ exports.main = async (event) => {
       ok: true,
       clientDownload: true,
       play: parsed.play,
+      playNoMark: parsed.playNoMark || '',
       title: parsed.title || '',
       coverFileID,
       size: 0,
