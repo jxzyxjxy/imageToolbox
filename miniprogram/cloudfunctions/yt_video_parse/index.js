@@ -811,7 +811,7 @@ async function parseKling(url) {
           play,
           title: String(kd.title || '').slice(0, 80),
           cover: typeof kcover === 'string' ? kcover : '',
-          note: '已取回可灵分享视频',
+          note: '已取回可灵作品原片',
           referer: 'https://klingai.com/',
         };
       }
@@ -889,7 +889,7 @@ async function parseJimeng(url) {
     playFallbacks: cands.slice(1, 3),
     title,
     cover,
-    note: '已取回即梦分享视频',
+    note: '已取回即梦无水印原片',
     referer: 'https://jimeng.jianying.com/',
   };
 }
