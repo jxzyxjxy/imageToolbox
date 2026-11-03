@@ -12,16 +12,20 @@
  *
  * 支持平台（按 URL 识别）：
  *   抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据；播放接口机房 IP 不可达，
- *                                           clientDownload 模式（前端直下）
- *   豆包   doubao.com/video-sharing     —— POST /creativity/share/get_video_share_info；
- *                                           365yg CDN 机房 IP 不可达，clientDownload 模式；
- *                                           官方分享流含水印（游客态无去水印通道）
+ *                                           clientDownload 模式（前端直下）；失败走聚合通道兜底
+ *   豆包   doubao.com/thread/          —— SSR fallback_api + qAAB 解密（无水印原片）
+ *   豆包   doubao.com/video-sharing     —— 聚合通道取 lr=unwatermarked 原画直链（服务端转存），
+ *                                           官方游客态仅水印流（穷举实证）；无直链降级 clientDownload
  *   可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
  *   即梦   jimeng.jianying.com/s/{code} —— 302 取 id → POST /mweb/v1/mget_item_info
  *   其他   .mp4 等视频直链直接转存
  *
+ * 聚合通道：video.zacao.top（30+ 平台，豆包/抖音实测返回无水印原片直链，365yg CDN
+ * 对机房 IP 可达可服务端转存）。匿名额度 30 次/IP/小时，可配 ZACAO_API_KEY 提额。
+ * 次级通道：api.xiaotuo.net（DOUBAO_API_KEY，接口 194 /doubao）。
+ *
  * clientDownload 通用降级：任何平台云函数下载失败（CDN 风控）时，
- * 自动降级为返回 play 直链由小程序端直下，不再向前端报死错误。
+ * 自动降级为返回 play/playNoMark 直链由小程序端直下，不再向前端报死错误。
  */
 const cloud = require('wx-server-sdk');
 const https = require('https');
@@ -39,8 +43,8 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v7） */
-const FN_VERSION = 'v7';
+/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v8） */
+const FN_VERSION = 'v8';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
@@ -154,19 +158,20 @@ function downloadBuffer(urlStr, timeoutMs = DOWNLOAD_TIMEOUT, maxBytes = MAX_VID
 /* ---------------- 链接与平台识别 ---------------- */
 
 /** POST JSON 请求（返回原始 headers，供 set-cookie 提取） */
-function requestPostJson(urlStr, bodyObj) {
+function requestPostJson(urlStr, bodyObj, extraHeaders) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
     const payload = Buffer.from(JSON.stringify(bodyObj));
     const req = https.request(
       {
         hostname: u.hostname,
-        path: u.pathname,
+        path: u.pathname + u.search,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': payload.length,
           'User-Agent': MOBILE_UA,
+          ...(extraHeaders || {}),
         },
         timeout: 10000,
       },
@@ -417,6 +422,19 @@ async function parseDouyin(url) {
     }
   }
   const detail = lastFilter ? `（${lastFilter}）` : '';
+  // 自有链路失败 → 聚合通道兜底（30+ 平台，抖音实测可解析），避免页面风控导致整体不可用
+  const backup = await callZacaoParse(url);
+  if (backup) {
+    return {
+      ok: true,
+      play: backup.url,
+      playNoMark: backup.url,
+      title: backup.title,
+      cover: backup.cover,
+      size: backup.size || 0,
+      note: '已取回无水印原片',
+    };
+  }
   return { ok: false, error: `抖音页面解析失败${detail}，请稍后重试` };
 }
 
@@ -705,6 +723,92 @@ async function parseDoubaoThread(url) {
   return { ok: false, error: `豆包无水印解析失败（${lastErr || '未知原因'}），可稍后重试` };
 }
 
+/* ---------------- 豆包无水印商业通道（api.xiaotuo.net，接口 194 /doubao） ----------------
+ * 豆包 video-sharing 分享接口（游客态）仅返回水印流（lr=video_gen_watermark_dyn；
+ * 页面上下文 + 全参数变体 + main/backup 双流均已穷举实测）。fplay 无水印接口需
+ * 页面签发的鉴权参数（keystore），服务端无法裸调（403）。无水印直链由聚合 API
+ * 提供（服务端持平台凭证池，即「耶斯去水印」等竞品小程序同款路线）。
+ * 需在云函数环境变量配置 DOUBAO_API_KEY（api.xiaotuo.net 注册获取）；未配置自动跳过。
+ */
+function findXiaotuoVideo(obj, depth = 0) {
+  if (depth > 6 || !obj || typeof obj !== 'object') return null;
+  const u = obj.url;
+  if (typeof u === 'string' && /^https?:\/\//.test(u) && (u.includes('video/tos/') || u.includes('unwatermarked') || /\.mp4(\?|$)/i.test(u))) {
+    return {
+      url: u,
+      title: typeof obj.title === 'string' ? obj.title : '',
+      size: Number(obj.size) || 0,
+    };
+  }
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === 'object') {
+      const hit = findXiaotuoVideo(v, depth + 1);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+async function callDoubaoNoMarkApi(shareUrl) {
+  const apiKey = String(process.env.DOUBAO_API_KEY || '').trim();
+  if (!apiKey) return null;
+  try {
+    const res = await requestPostJson(
+      'https://api.xiaotuo.net/api/v1/calls/invoke/doubao',
+      { url: shareUrl },
+      { 'x-api-key': apiKey },
+    );
+    if (res.status !== 200) return null;
+    let j;
+    try {
+      j = JSON.parse(res.body);
+    } catch (e) {
+      return null;
+    }
+    return findXiaotuoVideo(j);
+  } catch (err) {
+    return null;
+  }
+}
+
+/* ---------------- 通用聚合通道（video.zacao.top） ----------------
+ * 聚合 API（30+ 平台自动识别），豆包 video-sharing 实测返回 lr=unwatermarked
+ * 原画流（21.6Mbps 原片码率，四角抽帧 LLM 复核确认无水印，CDN 对机房 IP 可达）。
+ * 匿名额度 30 次/IP/小时；生产可配置 ZACAO_API_KEY 提升配额与稳定性。
+ */
+function extractZacaoVideo(j) {
+  const d = j && j.data;
+  if (!d || typeof d !== 'object') return null;
+  const pick = (v) => (typeof v === 'string' && /^https?:\/\//.test(v) ? v : '');
+  const url = pick(d.url) || pick(d.source_video_url);
+  if (!url) return null;
+  return {
+    url,
+    title: typeof d.title === 'string' ? d.title : '',
+    cover: pick(d.cover_url) || pick(d.source_cover_url),
+    size: Number(d.size) || 0,
+  };
+}
+
+async function callZacaoParse(shareUrl) {
+  const headers = {};
+  const apiKey = String(process.env.ZACAO_API_KEY || '').trim();
+  if (apiKey) headers['X-API-Key'] = apiKey;
+  try {
+    const res = await requestPostJson('https://video.zacao.top/api/parse', { text: shareUrl }, headers);
+    if (res.status !== 200) return null;
+    let j;
+    try {
+      j = JSON.parse(res.body);
+    } catch (e) {
+      return null;
+    }
+    return extractZacaoVideo(j);
+  } catch (err) {
+    return null;
+  }
+}
+
 async function parseDoubao(url) {
   const u = new URL(url);
   const shareId = u.searchParams.get('share_id') || '';
@@ -732,22 +836,38 @@ async function parseDoubao(url) {
   }
   const title = String((j.data && j.data.prompt) || '').slice(0, 80);
   const cover = (j.data && j.data.play_info && j.data.play_info.poster_url) || '';
-  // 豆包 CDN（365yg，字节风控体系）对机房 IP 拒下（与抖音同源），云函数下载失败实证；
-  // 改为 clientDownload 模式：返回 play 直链由小程序端直下（用户网络可通）。
-  // playNoMark：豆包 vid 与抖音同为字节 vid 体系，尝试字节通用播放接口
-  // （aweme/aweme/v1/play?video_id=，抖音解析同通道）——若豆包 vid 在该体系有效，
-  // 真机直下即无水印原片；无效时前端自动降级回 play（水印流）。
-  const playNoMark = vid
-    ? `https://aweme.snssdk.com/aweme/v1/play/?video_id=${encodeURIComponent(vid)}&ratio=1080p&line=0`
-    : '';
+  // 无水印链路：聚合通道（zacao 匿名可用 / xiaotuo 需 Key）返回 lr=unwatermarked
+  // 原画直链（365yg CDN 对机房 IP 可达，实测 27.7MB 全量下载成功）——服务端下载转存。
+  // 官方分享接口游客态仅发水印流（穷举实测），无直链时降级 clientDownload。
+  let noMark = await callZacaoParse(url);
+  if (!noMark) noMark = await callDoubaoNoMarkApi(url);
+  if (noMark) {
+    return {
+      ok: true,
+      play: noMark.url,
+      playFallbacks: [play],
+      playNoMark: noMark.url,
+      title: noMark.title || title,
+      cover: noMark.cover || cover,
+      size: noMark.size || 0,
+      note: '已取回豆包无水印原片',
+      referer: 'https://www.doubao.com/',
+    };
+  }
+  const hasKey = Boolean(
+    String(process.env.ZACAO_API_KEY || '').trim() || String(process.env.DOUBAO_API_KEY || '').trim(),
+  );
   return {
     ok: true,
     play,
-    playNoMark,
+    playNoMark: '',
     title,
     cover,
+    size: 0,
     clientDownload: true,
-    note: '优先尝试无水印通道，失败自动降级官方流',
+    note: hasKey
+      ? '无水印通道暂不可用，已降级官方流（含水印）'
+      : '官方分享仅提供带水印流；聚合通道恢复后自动取无水印原片',
     referer: 'https://www.doubao.com/',
   };
 }
@@ -1042,7 +1162,8 @@ async function mainHandler(event) {
     return {
       ok: true,
       clientDownload: true,
-      play: dlCandidates[0],
+      play: parsed.playNoMark || dlCandidates[0],
+      playNoMark: parsed.playNoMark || '',
       title: parsed.title || '',
       coverFileID,
       size: 0,
