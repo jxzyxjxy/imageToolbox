@@ -819,33 +819,105 @@ async function callZacaoParse(shareUrl) {
  * 响应 data.play_infos[] 的 main/backup 为各清晰度流；账号生成视频时开启
  * 「去除AI生成水印」开关的作品，登录态会直出 lr=unwatermarked 原画流。
  * 仅接受 lr=unwatermarked（其余与游客水印流相同，无意义）。 */
+/** fplay 响应解析：video_list 按分辨率×码率择优 + key_seed 解密 main_url（parseDoubaoThread 同款） */
+function pickFplayVideo(payload) {
+  const videoInfo = payload.video_info || (payload.data && payload.data.video_info) || payload;
+  const data = (videoInfo && typeof videoInfo === 'object' && videoInfo.data) || videoInfo;
+  if (!data || typeof data !== 'object') return null;
+  const rawList = data.video_list;
+  const candidates = Array.isArray(rawList)
+    ? rawList
+    : rawList && typeof rawList === 'object'
+      ? Object.values(rawList)
+      : [data];
+  const num = (v) => {
+    const n = Number(v || 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const entries = candidates.filter(
+    (it) => it && typeof it === 'object' && typeof (it.main_url || it.play_url) === 'string',
+  );
+  if (!entries.length) return null;
+  entries.sort(
+    (a, b) =>
+      num(b.vwidth || b.width) * num(b.vheight || b.height) +
+      num(b.bitrate || b.real_bitrate) -
+      (num(a.vwidth || a.width) * num(a.vheight || a.height) + num(a.bitrate || a.real_bitrate)),
+  );
+  const keySeed = String(
+    data.key_seed || videoInfo.key_seed || payload.key_seed || '',
+  );
+  const url = decodeMainUrl(entries[0].main_url || entries[0].play_url, keySeed);
+  if (!url) return null;
+  return {
+    url,
+    fallbacks: entries.slice(1).map((e) => e.main_url || e.play_url).filter((x) => typeof x === 'string'),
+    cover: String(data.poster_url || data.poster || payload.poster_url || ''),
+  };
+}
+
+/** Cookie 池：DOUBAO_COOKIES（换行/分号分隔多账号）优先，单个 DOUBAO_COOKIE 兼容 */
+function getDoubaoCookiePool() {
+  const raw = String(process.env.DOUBAO_COOKIES || process.env.DOUBAO_COOKIE || '');
+  return raw
+    .split(/[\n;]+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 10);
+}
+
 async function callDoubaoPlayInfo(vid) {
-  const cookie = String(process.env.DOUBAO_COOKIE || '').trim();
-  if (!cookie || !vid) return null;
-  try {
-    const res = await requestPostJson(
-      'https://www.doubao.com/samantha/video/get_play_info',
-      { vid },
-      { Cookie: cookie, Referer: 'https://www.doubao.com/' },
-    );
-    if (res.status !== 200) return null;
-    let j;
+  if (!vid) return null;
+  const cookies = getDoubaoCookiePool();
+  for (const cookie of cookies) {
     try {
-      j = JSON.parse(res.body);
-    } catch (e) {
-      return null;
+      const res = await requestPostJson(
+        'https://www.doubao.com/samantha/video/get_play_info',
+        { vid },
+        { Cookie: cookie, Referer: 'https://www.doubao.com/' },
+      );
+      if (res.status !== 200) continue;
+      let j;
+      try {
+        j = JSON.parse(res.body);
+      } catch (e) {
+        continue;
+      }
+      if (!j || j.code !== 0 || !j.data || !Array.isArray(j.data.play_infos)) continue;
+      const urls = [];
+      for (const pi of j.data.play_infos) {
+        if (pi && typeof pi.main === 'string' && pi.main) urls.push(pi.main);
+        if (pi && typeof pi.backup === 'string' && pi.backup) urls.push(pi.backup);
+      }
+      // 1) 官方直出无水印流
+      const hit = urls.find((x) => /lr=unwatermarked/.test(x));
+      if (hit) return { url: hit, title: '', cover: '', size: 0 };
+      // 2) fplay 形态 URL：改 logo_type=unwatermarked + codec_type=8 重放（doubao-nomark
+      //    浏览器扩展同款手法——登录态页面播放器签发的 fplay 链接可改参重取转码模板）
+      for (const u of urls) {
+        const replay = buildUnwatermarkedUrl(u);
+        if (!replay) continue;
+        try {
+          const vRes = await requestPage(replay, PAGE_TIMEOUT, 5, '');
+          if (vRes.status !== 200) continue;
+          let payload;
+          try {
+            payload = JSON.parse(vRes.body.toString('utf8'));
+          } catch (e) {
+            continue;
+          }
+          const picked = pickFplayVideo(payload);
+          if (picked && /lr=unwatermarked|video\/tos\//.test(picked.url)) {
+            return { url: picked.url, title: '', cover: picked.cover, size: 0 };
+          }
+        } catch (err) {
+          // 单条重放失败继续尝试下一条
+        }
+      }
+    } catch (err) {
+      // 当前 Cookie 失败（过期/风控），轮换下一个
     }
-    if (!j || j.code !== 0 || !j.data || !Array.isArray(j.data.play_infos)) return null;
-    const urls = [];
-    for (const pi of j.data.play_infos) {
-      if (pi && typeof pi.main === 'string' && pi.main) urls.push(pi.main);
-      if (pi && typeof pi.backup === 'string' && pi.backup) urls.push(pi.backup);
-    }
-    const hit = urls.find((x) => /lr=unwatermarked/.test(x));
-    return hit ? { url: hit, title: '', cover: '', size: 0 } : null;
-  } catch (err) {
-    return null;
   }
+  return null;
 }
 
 async function parseDoubao(url) {
@@ -897,8 +969,9 @@ async function parseDoubao(url) {
     };
   }
   // 无水印链路（自研优先）：
-  // 1) DOUBAO_COOKIE 登录态 get_play_info——作品生成方开启「去除AI生成水印」时直出
-  //    lr=unwatermarked 原画流，完全不依赖第三方；
+  // 1) DOUBAO_COOKIE(S) 登录态 get_play_info——直出 lr=unwatermarked 原画流；或对
+  //    fplay 形态 URL 改 logo_type=unwatermarked 重放（doubao-nomark 同款手法），
+  //    未开「去除AI生成水印」开关的作品同样可取无水印转码，完全不依赖第三方；
   // 2) 聚合通道（zacao 匿名可用 / xiaotuo 需 Key）返回 lr=unwatermarked 原画直链
   //    （365yg CDN 对机房 IP 可达，实测 27.7MB 全量下载成功）——服务端下载转存。
   // 官方分享接口游客态仅发水印流（穷举实测），无直链时降级 clientDownload。
