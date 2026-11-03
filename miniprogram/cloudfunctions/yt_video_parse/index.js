@@ -61,7 +61,7 @@ function requestPage(urlStr, timeoutMs = PAGE_TIMEOUT, maxRedirects = 5, cookie 
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
         res.on('end', () =>
-          resolve({ status: res.statusCode || 0, finalUrl: urlStr, body: Buffer.concat(chunks) }),
+          resolve({ status: res.statusCode || 0, finalUrl: urlStr, headers: res.headers, body: Buffer.concat(chunks) }),
         );
         res.on('error', reject);
       },
@@ -501,6 +501,70 @@ async function parseKling(url) {
   };
 }
 
+/* ---------------- 即梦（jimeng.jianying.com/s/{code}） ----------------
+ * /s/{code} 服务端 302 到回流页，Location 携带作品 id（短链解析在服务端完成，
+ * 需手动读 302 头而非跟随）。再 POST /mweb/v1/mget_item_info {item_id_list:[id]}
+ * （免登录，参数名经 bundle 逆向确认）。视频在 item.video.origin_video.video_url
+ * （vlabvod 签名 CDN 直链），降级链 origin → 720p → 480p → 360p。
+ */
+async function parseJimeng(url) {
+  const codeMatch = url.match(/jimeng\.jianying\.com\/s\/([A-Za-z0-9]+)/i);
+  if (!codeMatch) {
+    return { ok: false, error: '即梦链接格式不正确，请使用 App 内「复制链接」获得的完整分享' };
+  }
+  // 1. 短链 302，Location 携带作品 id（maxRedirects=0 不跟随）
+  const res = await requestPage(`https://jimeng.jianying.com/s/${codeMatch[1]}/`, PAGE_TIMEOUT, 0, '');
+  const loc = res.headers && res.headers.location;
+  if (res.status !== 302 || !loc) {
+    return { ok: false, error: '即梦短链解析失败，请确认分享链接有效' };
+  }
+  const idMatch = loc.match(/[?&]id=(\d+)/);
+  if (!idMatch) {
+    return { ok: false, error: '即梦短链未包含作品 ID，请重新从 App 分享' };
+  }
+  // 2. 查询作品详情
+  const api = await requestPostJson('https://jimeng.jianying.com/mweb/v1/mget_item_info', {
+    item_id_list: [idMatch[1]],
+  });
+  if (api.status !== 200) {
+    return { ok: false, error: '即梦服务无响应，请稍后重试' };
+  }
+  let j;
+  try {
+    j = JSON.parse(api.body);
+  } catch (e) {
+    return { ok: false, error: '即梦响应异常，请稍后重试' };
+  }
+  const item = j && j.ret === '0' && j.data && j.data.effect_item_list && j.data.effect_item_list[0];
+  if (!item) {
+    return { ok: false, error: '即梦作品获取失败（可能已删除或审核未通过）' };
+  }
+  const v = item.video || {};
+  const tv = v.transcoded_video || {};
+  const cands = [
+    v.origin_video && v.origin_video.video_url,
+    tv.origin && tv.origin.video_url,
+    tv['720p'] && tv['720p'].video_url,
+    tv['480p'] && tv['480p'].video_url,
+  ].filter(Boolean);
+  if (!cands.length) {
+    return { ok: false, error: '即梦作品未包含视频（可能是图片作品，暂不支持）' };
+  }
+  const attr = item.common_attr || {};
+  const coverMap = attr.cover_url_map || {};
+  const title = String(attr.description || '').slice(0, 80);
+  const cover = coverMap['720'] || coverMap['480'] || attr.cover_url || '';
+  return {
+    ok: true,
+    play: cands[0],
+    playFallbacks: cands.slice(1, 3),
+    title,
+    cover,
+    note: '已取回即梦分享视频',
+    referer: 'https://jimeng.jianying.com/',
+  };
+}
+
 /* ---------------- 云存储转存（对齐 yt_generate/lib/storage.js 约定） ---------------- */
 
 function resultPath(openid, ext) {
@@ -552,6 +616,12 @@ exports.main = async (event) => {
       parsed = await parseKling(url);
     } catch (err) {
       return { ok: false, error: `可灵解析失败：${err.message || '网络异常'}` };
+    }
+  } else if (/jimeng\.jianying\.com/i.test(url)) {
+    try {
+      parsed = await parseJimeng(url);
+    } catch (err) {
+      return { ok: false, error: `即梦解析失败：${err.message || '网络异常'}` };
     }
   } else if (/douyin\.com|iesdouyin\.com/i.test(url)) {
     try {
