@@ -250,16 +250,39 @@ function toNoWatermark(url) {
   return url.replace(/playwm/g, 'play').replace(/^http:\/\//, 'https://');
 }
 
+/**
+ * 抖音下载候选集。播放接口族对机房 IP 有整体下线/风控（404 len=0），
+ * 单一 url_list[0] 命中率不稳，用 uri 拼多组接口/清晰度变体提高容错。
+ * 404 为路径级拒绝（立即返回），不会显著拉长耗时。
+ */
+function buildDouyinPlayCandidates(playAddr) {
+  const cands = [];
+  const urls = playAddr && Array.isArray(playAddr.url_list) ? playAddr.url_list : [];
+  for (const u of urls) {
+    if (!u) continue;
+    cands.push(toNoWatermark(u));
+    cands.push(u);
+  }
+  const uri = playAddr && playAddr.uri;
+  if (uri && /^v\w{4}/.test(uri)) {
+    cands.push(`https://www.iesdouyin.com/aweme/v1/play/?video_id=${uri}&ratio=1080p&line=0`);
+    cands.push(`https://aweme.snssdk.com/aweme/v1/play/?video_id=${uri}&ratio=540p&line=0`);
+  }
+  return [...new Set(cands)].slice(0, 5);
+}
+
 /** 从 share 页 HTML 解析视频数据（_ROUTER_DATA 或 RENDER_DATA） */
 function extractFromHtml(html) {
   const routerMatch = html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*<\/script>/);
   if (routerMatch) {
     try {
       const data = JSON.parse(routerMatch[1]);
-      const play = findPlayAddr(data) && findPlayAddr(data).url_list[0];
+      const pa = findPlayAddr(data);
+      const play = pa && pa.url_list && pa.url_list[0];
       if (play) {
         return {
           play: toNoWatermark(play),
+          playFallbacks: buildDouyinPlayCandidates(pa),
           title: findStringField(data, ['desc', 'title']),
           cover: findStringField(data, ['cover', 'origin_cover']),
         };
@@ -272,10 +295,12 @@ function extractFromHtml(html) {
   if (renderMatch) {
     try {
       const data = JSON.parse(decodeURIComponent(renderMatch[1]));
-      const play = findPlayAddr(data) && findPlayAddr(data).url_list[0];
+      const pa = findPlayAddr(data);
+      const play = pa && pa.url_list && pa.url_list[0];
       if (play) {
         return {
           play: toNoWatermark(play),
+          playFallbacks: buildDouyinPlayCandidates(pa),
           title: findStringField(data, ['desc', 'title']),
           cover: findStringField(data, ['cover', 'originCover', 'origin_cover']),
         };
@@ -544,19 +569,32 @@ exports.main = async (event) => {
   const wxCtx = cloud.getWXContext();
   const openid = wxCtx.OPENID || 'guest';
 
-  // 下载无水印视频并转存云存储
-  let videoBuf;
-  try {
-    videoBuf = await downloadBuffer(parsed.play, DOWNLOAD_TIMEOUT, MAX_VIDEO_BYTES, parsed.referer || '');
-  } catch (err) {
-    const msg = err.message || '';
-    if (msg.includes('超时')) return { ok: false, error: '视频下载超时，请重试' };
-    if (msg.includes('200MB')) return { ok: false, error: msg };
-    console.error('[video-parse] download failed:', msg);
-    return { ok: false, error: '视频下载失败，请稍后重试' };
+  // 下载视频并转存云存储：主候选失败时依次尝试备用候选（接口变体）
+  let videoBuf = null;
+  let lastDlErr = null;
+  const dlCandidates = [parsed.play].concat(Array.isArray(parsed.playFallbacks) ? parsed.playFallbacks : []);
+  for (const cand of dlCandidates.slice(0, 5)) {
+    try {
+      const buf = await downloadBuffer(cand, DOWNLOAD_TIMEOUT, MAX_VIDEO_BYTES, parsed.referer || '');
+      if (buf && buf.length > 0) {
+        videoBuf = buf;
+        break;
+      }
+    } catch (err) {
+      lastDlErr = err;
+      const msg = err.message || '';
+      if (msg.includes('200MB')) return { ok: false, error: msg };
+      if (msg.includes('超时')) continue;
+    }
   }
-  if (!videoBuf || videoBuf.length === 0) {
-    return { ok: false, error: '视频源为空，请稍后重试' };
+  if (!videoBuf) {
+    const msg = (lastDlErr && lastDlErr.message) || '';
+    console.error('[video-parse] download failed:', msg, '| candidates:', dlCandidates.length);
+    if (msg.includes('超时')) return { ok: false, error: '视频下载超时，请重试' };
+    return {
+      ok: false,
+      error: '抖音视频下载通道当前受限（平台风控），可改用豆包/可灵分享链接，或稍后重试',
+    };
   }
 
   const videoExt = extOf(parsed.play, 'mp4');
