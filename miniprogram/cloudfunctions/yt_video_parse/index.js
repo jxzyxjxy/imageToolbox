@@ -31,14 +31,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
 /** GET 请求（页面级，小文件整包读取）；返回 { status, finalUrl, body } */
-function requestPage(urlStr, timeoutMs = PAGE_TIMEOUT, maxRedirects = 5) {
+function requestPage(urlStr, timeoutMs = PAGE_TIMEOUT, maxRedirects = 5, cookie = '') {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
+    const headers = { 'User-Agent': MOBILE_UA, Referer: DOUYIN_REFERER };
+    if (cookie) headers.Cookie = cookie;
     const req = https.get(
       {
         hostname: u.hostname,
         path: u.pathname + u.search,
-        headers: { 'User-Agent': MOBILE_UA, Referer: DOUYIN_REFERER },
+        headers,
         timeout: timeoutMs,
       },
       (res) => {
@@ -50,7 +52,7 @@ function requestPage(urlStr, timeoutMs = PAGE_TIMEOUT, maxRedirects = 5) {
         ) {
           res.resume();
           const next = new URL(res.headers.location, urlStr).toString();
-          requestPage(next, timeoutMs, maxRedirects - 1).then(resolve, reject);
+          requestPage(next, timeoutMs, maxRedirects - 1, cookie).then(resolve, reject);
           return;
         }
         const chunks = [];
@@ -136,6 +138,67 @@ function downloadBuffer(urlStr, timeoutMs = DOWNLOAD_TIMEOUT, maxBytes = MAX_VID
 }
 
 /* ---------------- 链接与平台识别 ---------------- */
+
+/** POST JSON 请求（返回原始 headers，供 set-cookie 提取） */
+function requestPostJson(urlStr, bodyObj) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const payload = Buffer.from(JSON.stringify(bodyObj));
+    const req = https.request(
+      {
+        hostname: u.hostname,
+        path: u.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length,
+          'User-Agent': MOBILE_UA,
+        },
+        timeout: 10000,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') }));
+        res.on('error', reject);
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error('请求超时')));
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+/* ---------------- ttwid 设备凭证（字节统一注册服务，免费无配置） ----------------
+ * 抖音对无 cookie 的数据中心请求按 spider 处理：share 页返回剥离视频数据的壳
+ * （loaderData 仅页面元信息，无 play_addr）。注册 ttwid 后视为正常设备。
+ */
+let ttwidCache = null;
+
+async function ensureTtwid() {
+  if (ttwidCache) return ttwidCache;
+  try {
+    const res = await requestPostJson('https://ttwid.bytedance.com/ttwid/union/register/', {
+      region: 'cn',
+      aid: 1768,
+      needFid: false,
+      service: 'www.ixigua.com',
+      migrate_info: { ticket: '', source: 'node' },
+      cbUrlProtocol: 'https',
+      union: true,
+    });
+    const cookies = (res.headers && res.headers['set-cookie']) || [];
+    const hit = cookies.find((c) => c.startsWith('ttwid='));
+    if (hit) {
+      ttwidCache = hit.split(';')[0];
+      return ttwidCache;
+    }
+  } catch (e) {
+    /* 注册失败不阻断解析，退化为无 cookie 请求 */
+  }
+  return null;
+}
 
 /** 从整段分享文案中提取第一个 URL */
 function extractUrl(text) {
@@ -231,6 +294,34 @@ function extractAwemeId(url) {
   return null;
 }
 
+/** 抖音过滤原因码 → 用户可读文案（未知码原样透出） */
+const FILTER_REASON_MAP = {
+  SYSTEM_ITEM_NOT_EXIST: '视频不存在或已被删除',
+  AWEME_PRE_DOWN: '视频暂不可见（作者设置了隐私权限）',
+  SYSTEM_ITEM_REVIEWING: '视频审核中，暂不可访问',
+  AWEME_PRIVATE: '视频为私密作品，无法取回',
+};
+
+function extractFilterReason(html) {
+  const m = html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*<\/script>/);
+  if (!m) return null;
+  try {
+    const data = JSON.parse(m[1]);
+    const loader = data.loaderData || {};
+    for (const key of Object.keys(loader)) {
+      const page = loader[key];
+      const fl = page && page.videoInfoRes && page.videoInfoRes.filter_list;
+      if (Array.isArray(fl) && fl.length && fl[0].filter_reason) {
+        const code = fl[0].filter_reason;
+        return FILTER_REASON_MAP[code] || code;
+      }
+    }
+  } catch (e) {
+    /* 忽略解析异常 */
+  }
+  return null;
+}
+
 async function parseDouyin(url) {
   // 1. 跟随短链重定向，拿真实地址
   const page = await fetchPage(url);
@@ -238,23 +329,35 @@ async function parseDouyin(url) {
   if (!awemeId) {
     return { ok: false, error: '未能识别视频 ID，请确认分享链接完整' };
   }
-  // 2. 依次尝试 share 页与主站页
+  // 2. 注册设备凭证（免费，失败不阻断）
+  let cookie = '';
+  try {
+    cookie = (await ensureTtwid()) || '';
+  } catch (e) {
+    /* 退化为无 cookie 请求 */
+  }
+  // 3. 依次尝试 share 页与主站页
   const pageUrls = [
     `https://www.iesdouyin.com/share/video/${awemeId}`,
     `https://www.douyin.com/video/${awemeId}`,
   ];
+  let lastFilter = null;
   for (const pageUrl of pageUrls) {
     try {
-      const res = await fetchPage(pageUrl);
-      const extracted = extractFromHtml(res.body.toString('utf8'));
+      const res = await requestPage(pageUrl, PAGE_TIMEOUT, 5, cookie);
+      if (res.status !== 200) continue;
+      const html = res.body.toString('utf8');
+      const extracted = extractFromHtml(html);
       if (extracted) {
         return { ok: true, ...extracted, note: '已取回无水印原片' };
       }
+      lastFilter = extractFilterReason(html) || lastFilter;
     } catch (e) {
       /* 尝试下一个页面 */
     }
   }
-  return { ok: false, error: '抖音页面解析失败（平台可能更新了接口），请稍后重试' };
+  const detail = lastFilter ? `（${lastFilter}）` : '';
+  return { ok: false, error: `抖音页面解析失败${detail}，请稍后重试` };
 }
 
 /* ---------------- 云存储转存（对齐 yt_generate/lib/storage.js 约定） ---------------- */
