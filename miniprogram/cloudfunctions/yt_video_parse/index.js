@@ -25,6 +25,7 @@
  */
 const cloud = require('wx-server-sdk');
 const https = require('https');
+const crypto = require('crypto');
 const { URL } = require('url');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
@@ -422,6 +423,285 @@ async function parseDouyin(url) {
  * 字节视频 CDN 直链（mp4），poster_url 为封面，prompt 为用户生成提示词。
  * 平台自有 get_without_watermark 接口需登录态，此处取分享流。
  */
+/* ---------------- 豆包对话分享（/thread/，无水印） ----------------
+ * 移植自开源项目 ihmily/doubao-nomark（MIT）的验证方案：
+ *   1. thread 页 SSR 数据（data-script-src="modern-run-router-data-fn" 的
+ *      script data-fn-args JSON）里递归提取 fallback_api（/video/fplay/ 接口）；
+ *   2. 给其 query 强制加 {codec_type:'8', logo_type:'unwatermarked'} → 无水印源；
+ *   3. 响应 video_list 选分辨率×码率最大的条目，main_url 是 qAAB 加密 token，
+ *      用响应里的 key_seed 派生 AES-128-CBC 密钥解密出真实 CDN 直链。
+ */
+const QAAB_SALT = Buffer.from(
+  '4dd4c2e6b83162090e52b3c7a6733ba4' +
+    '1cb2462b829ab58a196b39db57177524' +
+    'f49baf7f08e8d68d26a72e37c1a95a2f' +
+    '1f05a51892aef2949732b62a38aadd58',
+  'hex',
+);
+const FALLBACK_HOST_SUFFIXES = ['.snssdk.com', '.douyinvod.com', '.dola.com', '.byteintlapi.com'];
+const DOUBAO_DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0';
+
+function isHttpUrl(value) {
+  try {
+    const u = new URL(value);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && !!u.hostname;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 宽松 base64 解码（豆包 token 使用 $@# 做 +/= 的变体替换） */
+function decodeBase64Loose(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const variants = [
+    text,
+    text.replace(/\$/g, '_').replace(/@/g, '/').replace(/#/g, '.'),
+    text.replace(/\$/g, '+').replace(/@/g, '/').replace(/#/g, '='),
+  ];
+  const seen = new Set();
+  for (const candidate of variants) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    const normalized = candidate.replace(/-/g, '+').replace(/_/g, '/');
+    // 对齐 Python b64decode(validate=True)：含非法 base64 字符的变体直接跳过
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) continue;
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    try {
+      const buf = Buffer.from(padded, 'base64');
+      if (buf.length > 0) return buf;
+    } catch (e) {
+      /* 尝试下一个变体 */
+    }
+  }
+  return null;
+}
+
+/** 解码结果必须是可打印 ASCII 的 http URL 才有效 */
+function urlFromBytes(value) {
+  if (!value || value.length === 0) return '';
+  for (const byte of value) {
+    if (byte !== 9 && byte !== 10 && byte !== 13 && (byte < 32 || byte > 126)) return '';
+  }
+  const url = value.toString('ascii').trim();
+  return isHttpUrl(url) ? url : '';
+}
+
+function stripPkcs7(value) {
+  if (!value || value.length === 0) return Buffer.alloc(0);
+  const padding = value[value.length - 1];
+  if (padding < 1 || padding > 16 || padding > value.length) return value;
+  for (let i = value.length - padding; i < value.length; i++) {
+    if (value[i] !== padding) return value;
+  }
+  return value.subarray(0, value.length - padding);
+}
+
+function decryptAesCbcUrl(payload, key, iv) {
+  if (!payload || payload.length === 0 || payload.length % 16 !== 0) return '';
+  try {
+    const Decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+    Decipher.setAutoPadding(false);
+    const plaintext = Buffer.concat([Decipher.update(payload), Decipher.final()]);
+    return urlFromBytes(plaintext) || urlFromBytes(stripPkcs7(plaintext));
+  } catch (e) {
+    return '';
+  }
+}
+
+/** qAAB 加密 token 解密（key_seed 派生密钥） */
+function decodeQaabToken(token, keySeed) {
+  const data = decodeBase64Loose(token);
+  const seed = decodeBase64Loose(keySeed);
+  if (!data || !seed) return '';
+  const firstDigest = crypto.createHash('sha512').update(seed.subarray(0, 32)).digest();
+  const material = crypto.createHash('sha512').update(Buffer.concat([firstDigest, QAAB_SALT])).digest();
+  const key = material.subarray(0, 16);
+  const iv = material.subarray(16, 32);
+  const attempts = [];
+  if (data.subarray(0, 4).equals(Buffer.from([0xa8, 0x00, 0x01, 0x00]))) {
+    attempts.push([data.subarray(4), key, iv], [data.subarray(4), iv, key]);
+    if (data.length > 36) {
+      attempts.push([data.subarray(36), key, data.subarray(20, 36)], [data.subarray(36), key, iv]);
+    }
+  } else {
+    attempts.push([data, key, iv]);
+  }
+  for (const [payload, attemptKey, attemptIv] of attempts) {
+    const url = decryptAesCbcUrl(payload, attemptKey, attemptIv);
+    if (url) return url;
+  }
+  return '';
+}
+
+/** main_url 三态解码：明文 URL / base64 包裹 URL / qAAB 加密 */
+function decodeMainUrl(token, keySeed = '') {
+  const t = String(token || '').trim();
+  if (isHttpUrl(t)) return t;
+  const decoded = decodeBase64Loose(t);
+  const plain = urlFromBytes(decoded || Buffer.alloc(0));
+  if (plain) return plain;
+  if (t.startsWith('qAAB') && keySeed) return decodeQaabToken(t, keySeed);
+  return '';
+}
+
+/** 校验并改写 fallback_api：强制 {codec_type:'8', logo_type:'unwatermarked'} */
+function buildUnwatermarkedUrl(rawUrl) {
+  let u;
+  try {
+    u = new URL(rawUrl);
+  } catch (e) {
+    return '';
+  }
+  if (u.protocol !== 'https:') return '';
+  const host = (u.hostname || '').toLowerCase();
+  const trusted = FALLBACK_HOST_SUFFIXES.some((s) => host === s.slice(1) || host.endsWith(s));
+  if (!trusted || !u.pathname.startsWith('/video/fplay/')) return '';
+  u.searchParams.delete('codec_type');
+  u.searchParams.delete('logo_type');
+  u.searchParams.set('codec_type', '8');
+  u.searchParams.set('logo_type', 'unwatermarked');
+  return u.toString();
+}
+
+/** thread 页 SSR 数据（data-fn-args JSON）递归提取全部 fallback_api */
+function extractFallbackApis(pageHtml) {
+  const found = [];
+  const seen = new Set();
+  const scriptRe = /<script\b[^>]*data-script-src="(?:modern-run-router-data-fn|modern-run-window-fn)"[^>]*>/g;
+  const argsRe = /data-fn-args="([\s\S]*?)"/;
+  let scriptMatch;
+  while ((scriptMatch = scriptRe.exec(pageHtml)) !== null) {
+    const tag = scriptMatch[0];
+    const argsMatch = tag.match(argsRe);
+    if (!argsMatch) continue;
+    let jsonText = argsMatch[1];
+    try {
+      jsonText = jsonText
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+      const root = JSON.parse(jsonText);
+      const walk = (value, depth) => {
+        if (depth > 30 || value == null) return;
+        if (Array.isArray(value)) {
+          for (const item of value) walk(item, depth + 1);
+          return;
+        }
+        if (typeof value === 'object') {
+          const fa = value.fallback_api;
+          if (typeof fa === 'string' && !seen.has(fa)) {
+            seen.add(fa);
+            found.push(fa);
+          }
+          for (const k of Object.keys(value)) walk(value[k], depth + 1);
+          return;
+        }
+        if (typeof value === 'string') {
+          const trimmed = value.trimStart();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try {
+              walk(JSON.parse(trimmed), depth + 1);
+            } catch (e) {
+              /* 非 JSON 字符串忽略 */
+            }
+          }
+        }
+      };
+      walk(root, 0);
+    } catch (e) {
+      continue;
+    }
+  }
+  return found;
+}
+
+async function parseDoubaoThread(url) {
+  const res = await requestPage(url, PAGE_TIMEOUT, 5, '');
+  if (res.status !== 200) {
+    return { ok: false, error: '豆包对话页无响应，请稍后重试' };
+  }
+  const html = res.body.toString('utf8');
+  const fallbackApis = extractFallbackApis(html);
+  if (!fallbackApis.length) {
+    return { ok: false, error: '对话页中未找到视频数据，请确认分享链接包含视频内容' };
+  }
+  let lastErr = '';
+  for (const rawApi of fallbackApis) {
+    const api = buildUnwatermarkedUrl(rawApi);
+    if (!api) continue;
+    try {
+      const vRes = await requestPage(api, PAGE_TIMEOUT, 5, '');
+      if (vRes.status !== 200) {
+        lastErr = `HTTP ${vRes.status}`;
+        continue;
+      }
+      let payload;
+      try {
+        payload = JSON.parse(vRes.body.toString('utf8'));
+      } catch (e) {
+        lastErr = '响应非 JSON';
+        continue;
+      }
+      const videoInfo = payload.video_info || (payload.data && payload.data.video_info) || payload;
+      const data = (videoInfo && typeof videoInfo === 'object' && videoInfo.data) || videoInfo;
+      if (!data || typeof data !== 'object') {
+        lastErr = '缺少视频数据';
+        continue;
+      }
+      const rawList = data.video_list;
+      const candidates = Array.isArray(rawList)
+        ? rawList
+        : rawList && typeof rawList === 'object'
+          ? Object.values(rawList)
+          : [data];
+      const num = (v) => {
+        const n = Number(v || 0);
+        return Number.isFinite(n) ? n : 0;
+      };
+      const entries = candidates.filter(
+        (it) => it && typeof it === 'object' && typeof (it.main_url || it.play_url) === 'string',
+      );
+      if (!entries.length) {
+        lastErr = '响应中没有 main_url';
+        continue;
+      }
+      entries.sort(
+        (a, b) =>
+          num(b.vwidth || b.width) * num(b.vheight || b.height) +
+          num(b.bitrate || b.real_bitrate) -
+          (num(a.vwidth || a.width) * num(a.vheight || a.height) + num(a.bitrate || a.real_bitrate)),
+      );
+      const entry = entries[0];
+      const keySeed = String(
+        data.key_seed || videoInfo.key_seed || payload.key_seed || '',
+      );
+      const videoUrl = decodeMainUrl(entry.main_url || entry.play_url, keySeed);
+      if (!videoUrl) {
+        lastErr = '视频直链解密失败';
+        continue;
+      }
+      const title = String((payload.prompt || (payload.data && payload.data.prompt) || '')).slice(0, 80);
+      const cover = String(data.poster_url || data.poster || payload.poster_url || '');
+      return {
+        ok: true,
+        play: videoUrl,
+        playFallbacks: entries.slice(1).map((e2) => e2.main_url || e2.play_url).filter((u2) => typeof u2 === 'string'),
+        title,
+        cover,
+        note: '已取回豆包无水印原片',
+        referer: 'https://www.doubao.com/',
+      };
+    } catch (err) {
+      lastErr = (err && err.message) || '请求异常';
+    }
+  }
+  return { ok: false, error: `豆包无水印解析失败（${lastErr || '未知原因'}），可稍后重试` };
+}
+
 async function parseDoubao(url) {
   const u = new URL(url);
   const shareId = u.searchParams.get('share_id') || '';
@@ -674,9 +954,10 @@ exports.main = async (event) => {
   let parsed;
   if (/\.(mp4|m4v|mov|webm)(\?|#|$)/i.test(url)) {
     parsed = { ok: true, play: url, title: '', cover: '', note: '视频直链', referer: '' };
-  } else if (/doubao\.com/i.test(url)) {
+  } else if (/doubao\.com|dola\.com/i.test(url)) {
     try {
-      parsed = await parseDoubao(url);
+      // /thread/ 对话分享走无水印链路（fallback_api + 解密）；video-sharing 走分享接口（水印流兜底）
+      parsed = /\/thread\//i.test(url) ? await parseDoubaoThread(url) : await parseDoubao(url);
     } catch (err) {
       return { ok: false, error: `豆包解析失败：${err.message || '网络异常'}` };
     }
