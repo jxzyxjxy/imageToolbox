@@ -52,7 +52,7 @@ export default function VideoParse() {
     setResult(null);
     try {
       const res = await parseVideoLink(text);
-      if (!res.ok || !res.videoFileID) {
+      if (!res.ok || (!res.videoFileID && !res.clientDownload)) {
         Taro.showToast({ title: res.error || '解析失败，请检查链接', icon: 'none' });
         return;
       }
@@ -66,11 +66,22 @@ export default function VideoParse() {
   };
 
   const saveToAlbum = async () => {
-    if (!result?.videoFileID || saving) return;
+    if (!result || saving) return;
+    if (!result.videoFileID && !(result.clientDownload && result.play)) return;
     setSaving(true);
     Taro.showLoading({ title: '视频下载中…', mask: true });
     try {
-      const temp = await downloadTemp(result.videoFileID);
+      let temp: string;
+      if (result.clientDownload && result.play) {
+        // 抖音：前端直下播放接口（用户网络可通，自动跟随 302 到 CDN）
+        const dl = await Taro.downloadFile({ url: result.play });
+        if (dl.statusCode !== 200) {
+          throw new Error(`视频下载失败（HTTP ${dl.statusCode}）`);
+        }
+        temp = dl.tempFilePath;
+      } else {
+        temp = await downloadTemp(result.videoFileID as string);
+      }
       Taro.hideLoading();
       try {
         await Taro.saveVideoToPhotosAlbum({ filePath: temp });

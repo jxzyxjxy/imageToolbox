@@ -145,6 +145,10 @@ export interface ParseVideoResponse {
   ok?: boolean;
   /** 转存到云存储的无水印视频（前端 downloadTemp 后保存相册） */
   videoFileID?: string;
+  /** 抖音专用：视频由前端直接下载（云函数机房 IP 被播放接口拒绝，用户网络可通） */
+  clientDownload?: boolean;
+  /** clientDownload 模式下的视频地址（play 接口，前端 downloadFile 自动跟随 302） */
+  play?: string;
   /** 转存后的封面图 fileID */
   coverFileID?: string;
   title?: string;

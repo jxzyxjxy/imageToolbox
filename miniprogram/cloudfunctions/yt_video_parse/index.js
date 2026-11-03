@@ -245,6 +245,26 @@ function findStringField(node, keys, depth = 0) {
   return undefined;
 }
 
+/** 封面地址：cover 字段为字符串时直取，为 {url_list:[…]} 对象时取首项 */
+function findCoverUrl(node, keys = ['cover', 'origin_cover', 'originCover'], depth = 0) {
+  if (depth > 10 || node === null || typeof node !== 'object') return '';
+  for (const key of keys) {
+    const v = node[key];
+    if (typeof v === 'string' && v) return v;
+    if (v && typeof v === 'object') {
+      const list = Array.isArray(v.url_list) ? v.url_list : Array.isArray(v) ? v : null;
+      if (list && typeof list[0] === 'string' && list[0]) return list[0];
+    }
+  }
+  for (const value of Object.values(node)) {
+    if (value && typeof value === 'object') {
+      const found = findCoverUrl(value, keys, depth + 1);
+      if (found) return found;
+    }
+  }
+  return '';
+}
+
 /** 无水印地址：playwm 域名为水印流，play 域名为无水印流 */
 function toNoWatermark(url) {
   return url.replace(/playwm/g, 'play').replace(/^http:\/\//, 'https://');
@@ -284,7 +304,7 @@ function extractFromHtml(html) {
           play: toNoWatermark(play),
           playFallbacks: buildDouyinPlayCandidates(pa),
           title: findStringField(data, ['desc', 'title']),
-          cover: findStringField(data, ['cover', 'origin_cover']),
+          cover: findCoverUrl(data),
         };
       }
     } catch (e) {
@@ -302,7 +322,7 @@ function extractFromHtml(html) {
           play: toNoWatermark(play),
           playFallbacks: buildDouyinPlayCandidates(pa),
           title: findStringField(data, ['desc', 'title']),
-          cover: findStringField(data, ['cover', 'originCover', 'origin_cover']),
+          cover: findCoverUrl(data),
         };
       }
     } catch (e) {
@@ -377,7 +397,8 @@ async function parseDouyin(url) {
       const html = res.body.toString('utf8');
       const extracted = extractFromHtml(html);
       if (extracted) {
-        return { ok: true, ...extracted, note: '已取回无水印原片' };
+        // 抖音播放接口对机房 IP 关闭（404），视频由小程序端直接下载（走用户网络）
+        return { ok: true, ...extracted, clientDownload: true, note: '已取回无水印原片' };
       }
       lastFilter = extractFilterReason(html) || lastFilter;
     } catch (e) {
@@ -484,7 +505,16 @@ async function parseKling(url) {
       }
       const play = deepFindVideoUrl(j && j.data);
       if (play) {
-        return { ok: true, play, title: '', cover: '', note: '已取回可灵分享视频', referer: 'https://klingai.com/' };
+        const kd = j.data || {};
+        const kcover = kd.cover && typeof kd.cover === 'object' ? kd.cover.resource : kd.cover;
+        return {
+          ok: true,
+          play,
+          title: String(kd.title || '').slice(0, 80),
+          cover: typeof kcover === 'string' ? kcover : '',
+          note: '已取回可灵分享视频',
+          referer: 'https://klingai.com/',
+        };
       }
       if (j && j.error && j.error.type) {
         const mapped = KLING_ERROR_MAP.find(([re]) => re.test(j.error.type));
@@ -638,6 +668,38 @@ exports.main = async (event) => {
 
   const wxCtx = cloud.getWXContext();
   const openid = wxCtx.OPENID || 'guest';
+
+  // 抖音 clientDownload 模式：播放接口对机房 IP 整体关闭（404 空响应），
+  // 服务器侧无法下载。改由小程序端 Taro.downloadFile 直下（走用户手机网络，
+  // 与真实设备同源，接口正常 302 到 CDN）。云函数仅转存封面（douyinpic 图床可通）。
+  if (parsed.clientDownload) {
+    let coverFileID = '';
+    if (parsed.cover) {
+      try {
+        const coverBuf = await downloadBuffer(parsed.cover, 10000, 20 * 1024 * 1024, parsed.referer || '');
+        if (coverBuf && coverBuf.length > 0) {
+          const coverExt = extOf(parsed.cover, 'jpeg');
+          const coverUpload = await cloud.uploadFile({
+            cloudPath: resultPath(openid, coverExt),
+            fileContent: coverBuf,
+          });
+          coverFileID = coverUpload.fileID;
+          await register(coverFileID, openid);
+        }
+      } catch (e) {
+        console.warn('[video-parse] douyin cover skipped:', e && e.message ? e.message : e);
+      }
+    }
+    return {
+      ok: true,
+      clientDownload: true,
+      play: parsed.play,
+      title: parsed.title || '',
+      coverFileID,
+      size: 0,
+      note: parsed.note || '已取回无水印原片',
+    };
+  }
 
   // 下载视频并转存云存储：主候选失败时依次尝试备用候选（接口变体）
   let videoBuf = null;
