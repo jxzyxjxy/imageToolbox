@@ -50,8 +50,8 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v8） */
-const FN_VERSION = 'v9';
+/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v10） */
+const FN_VERSION = 'v10';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
@@ -935,6 +935,183 @@ async function callDoubaoPlayInfo(vid) {
   return null;
 }
 
+/* ---------------- 豆包消息通道（自研 Cookie 通道，v10） ----------------
+ * video-sharing 分享接口（游客/登录态）只发水印流（穷举实测）；但作品生成
+ * 消息（「你的视频生成好了」）在作者本人的豆包对话里，消息体 creation_block
+ * 内嵌完整 video_model——含 fplay fallback_api（登录态签发、绑定 vid、
+ * url_expire 到 2036 年长期有效）。链路（协议为抓包实测的 BDS JSON-over-HTTP）：
+ *   1. POST /alice/conversation/list（query 必须带 aid 等公共参数）拿作者对话；
+ *   2. POST /im/chain/single（cmd:3100，Content-Type 必须为
+ *      `application/json; encoding=utf-8` + agw-js-conv: str 头）翻消息历史，
+ *      anchor_index 从 int64 上限（最新）向前，翻页锚点取响应 next_index；
+ *   3. 按 share 接口给出的 message_id 定位生成消息，取 video_model.fallback_api；
+ *   4. fplay 改参重放（buildUnwatermarkedUrl 同款手法）→ qAAB 解密 → 无水印原画流。
+ */
+const DOUBAO_IM_QUERY =
+  'version_code=20800&language=zh&device_platform=web&doubao_device_platform=web' +
+  '&aid=497858&real_aid=497858&pkg_type=release_version&region=CN&sys_region=CN' +
+  '&samantha_web=1&web_platform=browser&use-olympus-account=1';
+
+function doubaoImHeaders(cookie) {
+  return {
+    'Content-Type': 'application/json; encoding=utf-8',
+    'agw-js-conv': 'str',
+    Accept: 'application/json, text/plain, */*',
+    Cookie: cookie,
+    Origin: 'https://www.doubao.com',
+    Referer: 'https://www.doubao.com/',
+    'User-Agent': DOUBAO_DESKTOP_UA,
+  };
+}
+
+/** 作者最近对话列表（去重，排除占位对话 id=0） */
+async function fetchDoubaoConversations(cookie, limit = 6) {
+  const list = [];
+  try {
+    const res = await requestPostJson(
+      'https://www.doubao.com/alice/conversation/list?limit=30&last_fetch_time=0&last_id=&query_type=1&' +
+        DOUBAO_IM_QUERY,
+      { limit: 30, last_fetch_time: 0, last_id: '', query_type: 1 },
+      doubaoImHeaders(cookie),
+      10000,
+    );
+    if (res.status !== 200) return list;
+    let j = null;
+    try {
+      j = JSON.parse(res.body);
+    } catch (e) {
+      return list;
+    }
+    const raw = j && j.data && Array.isArray(j.data.conversation_list) ? j.data.conversation_list : [];
+    for (const c of raw) {
+      const id = c ? String(c.conversation_id || '') : '';
+      if (!id || id === '0' || list.some((x) => x.id === id)) continue;
+      list.push({ id, name: String((c && c.name) || '') });
+      if (list.length >= limit) break;
+    }
+  } catch (err) {
+    // 列表失败返回已收集部分
+  }
+  return list;
+}
+
+/** 从「视频生成好了」消息体提取内嵌 fplay（video_model JSON 的 fallback_api） */
+function extractFplayFromDoubaoMessage(msg) {
+  const content = msg && typeof msg.content === 'string' ? msg.content : '';
+  if (!content) return '';
+  let blocks = null;
+  try {
+    blocks = JSON.parse(content);
+  } catch (e) {
+    return '';
+  }
+  if (!Array.isArray(blocks)) return '';
+  for (const block of blocks) {
+    const cb = block && block.content && block.content.creation_block;
+    const creations = cb && Array.isArray(cb.creations) ? cb.creations : null;
+    if (!creations) continue;
+    for (const c of creations) {
+      const video = c && c.video;
+      const vmRaw = video && typeof video.video_model === 'string' ? video.video_model : '';
+      if (!vmRaw) continue;
+      let vm = null;
+      try {
+        vm = JSON.parse(vmRaw);
+      } catch (e) {
+        continue;
+      }
+      const api = vm && typeof vm.fallback_api === 'string' ? vm.fallback_api : '';
+      if (api && /\/video\/fplay\//.test(api)) return api;
+    }
+  }
+  return '';
+}
+
+/** 单对话内翻消息历史找目标 message_id，命中返回消息体内嵌 fplay */
+async function findDoubaoVideoFplay(cookie, conversationId, messageId, maxPages = 4) {
+  let anchor = 9007199254740991; // int64 上限 = 最新消息
+  for (let page = 0; page < maxPages; page++) {
+    let j = null;
+    try {
+      const res = await requestPostJson(
+        'https://www.doubao.com/im/chain/single?' + DOUBAO_IM_QUERY,
+        {
+          cmd: 3100,
+          uplink_body: {
+            pull_singe_chain_uplink_body: {
+              conversation_id: String(conversationId),
+              anchor_index: anchor,
+              conversation_type: 3,
+              direction: 1,
+              limit: 50,
+              ext: {},
+              filter: { index_list: [] },
+              evaluate_ab_params: '',
+              evaluate_common_params: '',
+              option: { lazy_load_strategy: 0 },
+            },
+          },
+          sequence_id: crypto.randomUUID(),
+          channel: 2,
+          version: '1',
+        },
+        doubaoImHeaders(cookie),
+        15000,
+      );
+      if (res.status !== 200) return '';
+      j = JSON.parse(res.body);
+    } catch (err) {
+      return '';
+    }
+    const dl =
+      j && j.downlink_body && j.downlink_body.pull_singe_chain_downlink_body ? j.downlink_body.pull_singe_chain_downlink_body : null;
+    const msgs = dl && Array.isArray(dl.messages) ? dl.messages : [];
+    for (const m of msgs) {
+      if (!m || String(m.message_id || '') !== String(messageId)) continue;
+      const fplay = extractFplayFromDoubaoMessage(m);
+      if (fplay) return fplay;
+    }
+    const next = dl && dl.next_index !== undefined && dl.next_index !== null ? String(dl.next_index) : '';
+    const nextAnchor = Number(next);
+    if (!dl || !dl.has_more || !next || !Number.isFinite(nextAnchor) || nextAnchor <= 0 || nextAnchor >= anchor) {
+      return '';
+    }
+    anchor = nextAnchor;
+  }
+  return '';
+}
+
+/** 消息通道组合：Cookie 轮换 → 对话列表 → 逐对话翻页找生成消息 → fplay 改参重放取无水印流 */
+async function callDoubaoMessageChannel(vid, messageId) {
+  if (!vid || !messageId) return null;
+  for (const cookie of rotateCookiePool(getDoubaoCookiePool())) {
+    try {
+      const convs = await fetchDoubaoConversations(cookie);
+      for (const conv of convs) {
+        const fplay = await findDoubaoVideoFplay(cookie, conv.id, messageId);
+        if (!fplay || !fplay.includes(vid)) continue; // fplay token 服务端绑定 vid
+        const api = buildUnwatermarkedUrl(fplay);
+        if (!api) continue;
+        const vRes = await requestPage(api, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
+        if (vRes.status !== 200) continue;
+        let payload = null;
+        try {
+          payload = JSON.parse(vRes.body.toString('utf8'));
+        } catch (e) {
+          continue;
+        }
+        const picked = pickFplayVideo(payload);
+        if (picked && /lr=unwatermarked/.test(picked.url)) {
+          return { url: picked.url, cover: picked.cover || '' };
+        }
+      }
+    } catch (err) {
+      // 当前 Cookie 失败（过期/风控），轮换下一个
+    }
+  }
+  return null;
+}
+
 /** 豆包分享页 SSR 兜底：游客态分享页可能内嵌 fplay（与 thread 通道同款手法），
  * 命中即可改参重放取无水印转码；提取不到返回 null（不影响主链路）。 */
 async function tryDoubaoShareSsr(shareUrl, vid) {
@@ -1052,6 +1229,27 @@ async function parseDoubao(url) {
       note: '已通过你的豆包登录态取回无水印原片',
       referer: '', // 同上
     };
+  }
+  // 2) 消息通道（v10 自研）：分享元数据带 message_id 时，去作者本人的豆包对话里
+  //    翻出「视频生成好了」消息，从内嵌 video_model 的 fplay 改参重放取无水印原画流。
+  //    实测该通道对 video-sharing 分享（官方接口仅发水印流的场景）有效。
+  const sourceInfo = (j && j.data && j.data.source_info) || null;
+  const messageId = sourceInfo ? String(sourceInfo.message_id || '') : '';
+  if (messageId) {
+    const viaMsg = await callDoubaoMessageChannel(vid, messageId);
+    if (viaMsg) {
+      return {
+        ok: true,
+        play: viaMsg.url,
+        playFallbacks: [play],
+        playNoMark: viaMsg.url,
+        title,
+        cover: viaMsg.cover || cover,
+        size: 0,
+        note: '已通过消息通道取回无水印原片（fplay 改参重放）',
+        referer: '',
+      };
+    }
   }
   const hasCookie = Boolean(
     String(process.env.DOUBAO_COOKIE || '').trim() ||

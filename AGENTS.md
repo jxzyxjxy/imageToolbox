@@ -63,3 +63,11 @@
 
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
+
+## 云函数视频解析（miniprogram/cloudfunctions/yt_video_parse/index.js）
+
+- `FN_VERSION` 版本戳随返回下发（`exports.main` 包装 `ver` 字段），真机 toast 尾巴可见，用于排查「线上是否为最新部署」。
+- 豆包去水印链路（v10）：`parseDoubao` → 分享接口 `get_video_share_info`（拿 `source_info.message_id` + 水印流兜底）→ `callDoubaoPlayInfo`（Cookie get_play_info）→ **`callDoubaoMessageChannel`（消息通道）** → `tryDoubaoShareSsr` → 水印流 clientDownload 降级。
+- 消息通道（自研，抓包 BDS 协议）：`fetchDoubaoConversations`（`alice/conversation/list`，query 必须带 `DOUBAO_IM_QUERY` 公共参数）→ `findDoubaoVideoFplay`（`im/chain/single` cmd:3100 翻页，Content-Type 必须为 `application/json; encoding=utf-8` 且带 `agw-js-conv: str` 头，翻页锚点 `next_index`）→ `extractFplayFromDoubaoMessage`（消息体 creation_block 内嵌 video_model JSON 的 fallback_api，token 绑 vid、url_expire 到 2036 年）→ `buildUnwatermarkedUrl` 改参重放（`logo_type=unwatermarked&codec_type=8`）→ `pickFplayVideo`（qAAB 解密 main_url）。
+- 凭证：云开发控制台环境变量 `DOUBAO_COOKIE` / `DOUBAO_COOKIES`（多账号换行分隔，`getDoubaoCookiePool` 读取）；无凭证时全链路仍 ok:true（水印流 clientDownload），不报错。
+- e2e 验证方式：`/tmp/harness/e2e_ck.js`（stub wx-server-sdk + 真实链接 + Cookie 直跑 `exports.main`）；单测 `test_units.js` 从源码 `m._compile(src + 追加导出行)` 提取纯函数，用 `/tmp/harness/target_msg.json`、`fplay_nomark.json` 真实抓包夹具。
