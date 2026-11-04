@@ -1,5 +1,5 @@
 /**
- * 视频链接解析（取回无水印原片）：当前支持抖音分享链接 + 视频直链。
+ * 视频链接解析（取回无水印原片）：当前支持抖音 / 豆包 / 可灵 / 即梦 / B站分享链接 + 视频直链。
  * event: { text } —— 分享文案或链接（≤2000 字符）
  *
  * 流程：提取 URL → 识别平台 → 解析无水印源（原生 https，Node16 无全局 fetch）
@@ -19,6 +19,10 @@
  *                                           官方游客态仅水印流（穷举实证）；无直链降级 clientDownload
  *   可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
  *   即梦   jimeng.jianying.com/s/{code} —— 302 取 id → POST /mweb/v1/mget_item_info
+ *   B站    bilibili.com / b23.tv        —— pagelist 取 cid + playurl(platform=html5)
+ *                                           游客态直出 720P mp4（无签名；view 族
+ *                                           接口对机房 IP 412，故走 pagelist），
+ *                                           CDN 域名变体多 → 云函数转存模式
  *   其他   .mp4 等视频直链直接转存
  *
  * 豆包自备凭证：DOUBAO_COOKIE / DOUBAO_COOKIES（豆包网页端登录 Cookie，浏览器 F12
@@ -50,8 +54,8 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v10） */
-const FN_VERSION = 'v10';
+/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v11） */
+const FN_VERSION = 'v11';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
@@ -1185,7 +1189,8 @@ async function parseDoubao(url) {
         title: '',
         cover: ssr.cover,
         size: 0,
-        note: '已通过分享页通道取回无水印原片',
+        clientDownload: true,
+        note: '已通过分享页通道取回无水印原片（手机端直下）',
         referer: '', // 365yg 匿名直链带 Referer 会触发防盗链 403，实测不带才能下载
       };
     }
@@ -1205,7 +1210,8 @@ async function parseDoubao(url) {
       title,
       cover,
       size: 0,
-      note: '已通过登录态取回豆包无水印原片',
+      clientDownload: true,
+      note: '已通过登录态取回豆包无水印原片（手机端直下）',
       referer: '', // 365yg 匿名直链带 Referer 会触发防盗链 403，实测不带才能下载
     };
   }
@@ -1213,9 +1219,10 @@ async function parseDoubao(url) {
   // 1) DOUBAO_COOKIE(S) 登录态 get_play_info——直出 lr=unwatermarked 原画流；或对
   //    fplay 形态 URL 改 logo_type=unwatermarked 重放（doubao-nomark 同款手法），
   //    未开「去除AI生成水印」开关的作品同样可取无水印转码，完全不依赖第三方；
-  // 2) 自研登录态通道（DOUBAO_COOKIES）：get_play_info 直出 lr=unwatermarked，
-  //    或对 fplay 形态 URL 改 logo_type=unwatermarked 重放（转码模板切换）。
-  //    官方分享接口游客态仅发水印流（穷举实测），无直链时降级 clientDownload。
+  // 2) 消息通道：分享元数据 message_id → 作者对话翻页 → video_model 内嵌 fplay。
+  // 命中任一通道即 clientDownload：AI 生成原片码率可达 22Mbps（27MB+），云函数
+  // 下载+转存需 5~10s；fplay 直链 url_expire 到 2036 年长期有效，手机端直下
+  // 把解析耗时压到 ~3s，也不再产生大体积临时文件（yt_cleanup 只需清封面小图）。
   const noMark = await callDoubaoPlayInfo(vid);
   if (noMark) {
     return {
@@ -1226,7 +1233,8 @@ async function parseDoubao(url) {
       title: noMark.title || title,
       cover: noMark.cover || cover,
       size: noMark.size || 0,
-      note: '已通过你的豆包登录态取回无水印原片',
+      clientDownload: true,
+      note: '已通过你的豆包登录态取回无水印原片（手机端直下）',
       referer: '', // 同上
     };
   }
@@ -1246,7 +1254,8 @@ async function parseDoubao(url) {
         title,
         cover: viaMsg.cover || cover,
         size: 0,
-        note: '已通过消息通道取回无水印原片（fplay 改参重放）',
+        clientDownload: true,
+        note: '已通过消息通道取回无水印原片（手机端直下）',
         referer: '',
       };
     }
@@ -1422,6 +1431,149 @@ async function parseJimeng(url) {
   };
 }
 
+/* ---------------- B站（bilibili.com / b23.tv，游客态公开 API） ----------------
+ * B站视频本身无水印；分享多为 b23.tv 短链（302 → /video/BV 号页）。
+ * 接口全游客态（无签名，机房 IP 实测可通，但 view 族接口对机房 IP 412 风控）：
+ *   pagelist GET /x/player/pagelist?bvid= → cid + part（分P标题）+ first_frame
+ *   playurl  GET /x/player/playurl?bvid=&cid=&platform=html5&high_quality=1
+ *            → data.durl[0]（720P mp4 直链 + size + backup_url 兜底候选）
+ * CDN 直链需带 UA（无 UA 403），downloadBuffer 默认 MOBILE_UA 满足。
+ * CDN 域名变体多（bilivideo 系无法穷举进小程序 downloadFile 白名单）→ 走云函数
+ * 转存模式（云存储域名固定可白名单）。
+ * 健壮性：多分P按 ?p=N 取对应分P；qn 64→32→16 逐级降级；多段 durl 明确报错
+ * 不静默截断；playurl 整体失败时由 mainHandler 下载段兜底 clientDownload。
+ */
+const BILI_HEADERS = { Referer: 'https://www.bilibili.com/' };
+
+const BILI_ERROR_MAP = {
+  '-400': 'B站链接格式不正确，或视频不存在 / 已被删除',
+  '-404': '视频不存在或已被删除',
+  '62002': '稿件不可见（可能审核中或已被锁定）',
+  '62004': '视频审核未通过，无法取回',
+  '62012': '仅 UP 主自己可见，无法取回',
+};
+
+/** av → BV：公开 base58 算法对 2024+ 新号段已失效，改走 302 → 移动版页面提取。
+ * www.bilibili.com/video/avXXX 对移动 UA 返回 302 → m.bilibili.com 200 页面，
+ * 页面内嵌真实 BV 号（canonical），实测稳定。 */
+async function avToBvByPage(avid, page) {
+  const res = await requestPage(`https://www.bilibili.com/video/av${avid}/`, PAGE_TIMEOUT, 5, '');
+  const bv = (res.body ? res.body.toString('utf8') : '').match(/BV1[0-9a-zA-Z]{9}/);
+  return bv ? { bvid: bv[0], page } : null;
+}
+
+/** 从任意 B站链接形态解析 BV 号与分P号；b23.tv 短链先跟随 302 展开。
+ * 注意：BV 号 base58 编码大小写敏感，不可大写化。 */
+async function resolveBiliTarget(url) {
+  let u = url;
+  if (/b23\.tv/i.test(u)) {
+    const res = await requestPage(u, PAGE_TIMEOUT, 5, '');
+    if (res.finalUrl && res.finalUrl !== url) u = res.finalUrl;
+  }
+  const pMatch = u.match(/[?&]p=(\d{1,3})(?:&|#|$)/);
+  const page = pMatch ? Number(pMatch[1]) : 1;
+  const bv = u.match(/[Bb][Vv]1[0-9a-zA-Z]{9}/);
+  if (bv) return { bvid: bv[0], page };
+  const av = u.match(/\/av(\d{5,15})/i);
+  if (av) return avToBvByPage(av[1], page);
+  return null;
+}
+
+async function parseBilibili(url) {
+  const target = await resolveBiliTarget(url);
+  if (!target) {
+    return { ok: false, error: 'B站链接缺少视频 ID，请使用 App 内「复制链接」获得的完整分享' };
+  }
+
+  // 1) pagelist 取 cid 与分P信息（av 形态已转 BV；playurl 不认 aid）
+  const idQuery = `bvid=${encodeURIComponent(target.bvid)}`;
+  const plRes = await requestPage(
+    `https://api.bilibili.com/x/player/pagelist?${idQuery}`,
+    PAGE_TIMEOUT, 3, '', BILI_HEADERS,
+  );
+  if (plRes.status !== 200) {
+    return { ok: false, error: `B站接口不可达（HTTP ${plRes.status}），请稍后重试` };
+  }
+  let pl = null;
+  try {
+    pl = JSON.parse(plRes.body.toString('utf8'));
+  } catch (e) {
+    pl = null;
+  }
+  if (!pl || typeof pl.code !== 'number') {
+    return { ok: false, error: 'B站返回数据异常，请稍后重试' };
+  }
+  if (pl.code !== 0 || !Array.isArray(pl.data) || pl.data.length === 0) {
+    const mapped = BILI_ERROR_MAP[String(pl.code)];
+    return { ok: false, error: mapped || `B站视频取回失败（code ${pl.code}）` };
+  }
+  // 分P选择：?p=N 超界时回落第一P（部分分享链接会带过期的 p 参数）
+  const seg0 = pl.data[0] || {};
+  let pageItem = seg0;
+  if (target.page > 1) {
+    const hit = pl.data.find((it) => it && it.page === target.page);
+    pageItem = hit || seg0;
+  }
+  const cid = pageItem.cid;
+  if (!cid) return { ok: false, error: 'B站视频信息异常（缺少 cid），无法取回播放地址' };
+
+  // 2) playurl 游客态 mp4 直链，qn 逐级降级（64=720P / 32=480P / 16=360P）
+  let durl = null;
+  let quality = 0;
+  for (const qn of [64, 32, 16]) {
+    try {
+      const puRes = await requestPage(
+        `https://api.bilibili.com/x/player/playurl?${idQuery}&cid=${encodeURIComponent(cid)}&qn=${qn}&platform=html5&high_quality=1`,
+        PAGE_TIMEOUT, 3, '', BILI_HEADERS,
+      );
+      if (puRes.status !== 200) continue;
+      let pu = null;
+      try {
+        pu = JSON.parse(puRes.body.toString('utf8'));
+      } catch (e) {
+        pu = null;
+      }
+      if (pu && pu.code === 0 && pu.data && Array.isArray(pu.data.durl) && pu.data.durl.length > 0) {
+        durl = pu.data.durl;
+        quality = pu.data.quality || qn;
+        break;
+      }
+    } catch (e) {
+      /* 尝试更低 qn */
+    }
+  }
+  if (!durl) {
+    return { ok: false, error: '未取到播放地址（可能为番剧 / 付费 / 互动视频，暂不支持）' };
+  }
+  if (durl.length > 1) {
+    return { ok: false, error: `该视频时长过长（B站拆分为 ${durl.length} 段），暂不支持解析` };
+  }
+  const seg = durl[0] || {};
+  if (!seg.url) return { ok: false, error: '播放地址为空，请稍后重试' };
+
+  // backup_url 是同源备用 CDN，转存失败时由 mainHandler 逐候选重试
+  const fallbacks = (Array.isArray(seg.backup_url) ? seg.backup_url : [])
+    .filter((x) => /^https?:\/\//.test(String(x)))
+    .slice(0, 3);
+  const qualityLabel = { 64: '720P', 32: '480P', 16: '360P' }[quality] || `${quality}P`;
+
+  // 标题：分P名（单P即主标题），多P带 P 标号；封面：首帧图（http 强转 https）
+  const partTitle = String(pageItem.part || '').trim();
+  const title = partTitle && pl.data.length > 1 ? `${partTitle}（P${pageItem.page || 1}）` : partTitle;
+  const cover = String(pageItem.first_frame || '').replace(/^http:/, 'https:');
+
+  return {
+    ok: true,
+    play: seg.url,
+    playFallbacks: fallbacks,
+    title: title.slice(0, 80),
+    cover,
+    size: Number(seg.size) > 0 ? Number(seg.size) : 0,
+    note: `已取回 B站原视频（${qualityLabel}，游客公开接口画质上限）`,
+    referer: 'https://www.bilibili.com/',
+  };
+}
+
 /* ---------------- 云存储转存（对齐 yt_generate/lib/storage.js 约定） ---------------- */
 
 function resultPath(openid, ext) {
@@ -1501,6 +1653,12 @@ async function mainHandler(event) {
     } catch (err) {
       return { ok: false, error: `即梦解析失败：${err.message || '网络异常'}` };
     }
+  } else if (/bilibili\.com|b23\.tv/i.test(url)) {
+    try {
+      parsed = await parseBilibili(url);
+    } catch (err) {
+      return { ok: false, error: `B站解析失败：${err.message || '网络异常'}` };
+    }
   } else if (/douyin\.com|iesdouyin\.com/i.test(url)) {
     try {
       parsed = await parseDouyin(url);
@@ -1508,7 +1666,7 @@ async function mainHandler(event) {
       return { ok: false, error: `网络请求失败：${err.message || '未知错误'}` };
     }
   } else {
-    return { ok: false, error: '当前支持抖音 / 豆包 / 可灵分享链接，更多平台陆续上线' };
+    return { ok: false, error: '当前支持抖音 / 豆包 / 可灵 / 即梦 / B站分享链接，更多平台陆续上线' };
   }
   if (!parsed.ok || !parsed.play) {
     return { ok: false, error: parsed.error || '解析失败，请检查链接' };
