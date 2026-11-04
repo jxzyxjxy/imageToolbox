@@ -39,6 +39,10 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const MOBILE_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
+/** 豆包链路专用：桌面 Chrome UA（fplay 改参重放实测要求浏览器 UA，Referer 必须为空） */
+const DOUBAO_DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+const DOUBAO_HEADERS = { 'User-Agent': DOUBAO_DESKTOP_UA, Referer: '' };
 const DOUYIN_REFERER = 'https://www.douyin.com/';
 const PAGE_TIMEOUT = 12000;
 const DOWNLOAD_TIMEOUT = 30000;
@@ -47,15 +51,17 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v8） */
-const FN_VERSION = 'v8';
+const FN_VERSION = 'v9';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
-/** GET 请求（页面级，小文件整包读取）；返回 { status, finalUrl, body } */
-function requestPage(urlStr, timeoutMs = PAGE_TIMEOUT, maxRedirects = 5, cookie = '') {
+/** GET 请求（页面级，小文件整包读取）；返回 { status, finalUrl, body }
+ * extraHeaders 可覆盖默认头（Referer 传空串则不发，豆包 fplay 实测带 Referer 会被拒） */
+function requestPage(urlStr, timeoutMs = PAGE_TIMEOUT, maxRedirects = 5, cookie = '', extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
-    const headers = { 'User-Agent': MOBILE_UA, Referer: DOUYIN_REFERER };
+    const headers = { 'User-Agent': MOBILE_UA, Referer: DOUYIN_REFERER, ...extraHeaders };
+    if (!headers.Referer) delete headers.Referer;
     if (cookie) headers.Cookie = cookie;
     const req = https.get(
       {
@@ -450,8 +456,6 @@ const QAAB_SALT = Buffer.from(
   'hex',
 );
 const FALLBACK_HOST_SUFFIXES = ['.snssdk.com', '.douyinvod.com', '.dola.com', '.byteintlapi.com'];
-const DOUBAO_DESKTOP_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0';
 
 function isHttpUrl(value) {
   try {
@@ -576,18 +580,22 @@ function buildUnwatermarkedUrl(rawUrl) {
   return u.toString();
 }
 
-/** thread 页 SSR 数据（data-fn-args JSON）递归提取全部 fallback_api */
+/** thread 页 SSR 数据（data-fn-args JSON）递归提取全部 fallback_api
+ * 注意：大块 SSR 数据的 data-fn-args 属性可能用单引号包裹（实测 2026-11
+ * doubao.com/thread/{token} 页面），正则需同时兼容单/双引号，否则整段
+ * 数据被跳过（提取数为 0）。 */
 function extractFallbackApis(pageHtml) {
   const found = [];
   const seen = new Set();
   const scriptRe = /<script\b[^>]*data-script-src="(?:modern-run-router-data-fn|modern-run-window-fn)"[^>]*>/g;
-  const argsRe = /data-fn-args="([\s\S]*?)"/;
+  const argsRe = /data-fn-args=(?:"([\s\S]*?)"|'([\s\S]*?)')/;
   let scriptMatch;
   while ((scriptMatch = scriptRe.exec(pageHtml)) !== null) {
     const tag = scriptMatch[0];
     const argsMatch = tag.match(argsRe);
     if (!argsMatch) continue;
-    let jsonText = argsMatch[1];
+    let jsonText = argsMatch[1] !== undefined ? argsMatch[1] : argsMatch[2];
+    if (!jsonText) continue;
     try {
       jsonText = jsonText
         .replace(/&quot;/g, '"')
@@ -604,9 +612,14 @@ function extractFallbackApis(pageHtml) {
         }
         if (typeof value === 'object') {
           const fa = value.fallback_api;
-          if (typeof fa === 'string' && !seen.has(fa)) {
-            seen.add(fa);
-            found.push(fa);
+          if (typeof fa === 'string') {
+            // SSR 字符串里的 URL 可能残留 \u0026 / \/ 转义（JSON.parse 后仍可能有
+            // 二次转义形态），统一清洗后再去重（ihmily/doubao-nomark 同款处理）
+            const cleaned = fa.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+            if (!seen.has(cleaned)) {
+              seen.add(cleaned);
+              found.push(cleaned);
+            }
           }
           for (const k of Object.keys(value)) walk(value[k], depth + 1);
           return;
@@ -631,7 +644,7 @@ function extractFallbackApis(pageHtml) {
 }
 
 async function parseDoubaoThread(url) {
-  const res = await requestPage(url, PAGE_TIMEOUT, 5, '');
+  const res = await requestPage(url, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
   if (res.status !== 200) {
     return { ok: false, error: '豆包对话页无响应，请稍后重试' };
   }
@@ -645,7 +658,7 @@ async function parseDoubaoThread(url) {
     const api = buildUnwatermarkedUrl(rawApi);
     if (!api) continue;
     try {
-      const vRes = await requestPage(api, PAGE_TIMEOUT, 5, '');
+      const vRes = await requestPage(api, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
       if (vRes.status !== 200) {
         lastErr = `HTTP ${vRes.status}`;
         continue;
@@ -700,7 +713,11 @@ async function parseDoubaoThread(url) {
       return {
         ok: true,
         play: videoUrl,
-        playFallbacks: entries.slice(1).map((e2) => e2.main_url || e2.play_url).filter((u2) => typeof u2 === 'string'),
+        playNoMark: videoUrl,
+        playFallbacks: entries
+          .slice(1)
+          .map((e2) => decodeMainUrl(e2.main_url || e2.play_url, keySeed))
+          .filter((u2) => /^https?:\/\//.test(u2)),
         title,
         cover,
         note: '已取回豆包无水印原片',
@@ -895,7 +912,7 @@ async function callDoubaoPlayInfo(vid) {
         const replay = buildUnwatermarkedUrl(u);
         if (!replay) continue;
         try {
-          const vRes = await requestPage(replay, PAGE_TIMEOUT, 5, '');
+          const vRes = await requestPage(replay, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
           if (vRes.status !== 200) continue;
           let payload;
           try {
@@ -918,6 +935,41 @@ async function callDoubaoPlayInfo(vid) {
   return null;
 }
 
+/** 豆包分享页 SSR 兜底：游客态分享页可能内嵌 fplay（与 thread 通道同款手法），
+ * 命中即可改参重放取无水印转码；提取不到返回 null（不影响主链路）。 */
+async function tryDoubaoShareSsr(shareUrl, vid) {
+  try {
+    const res = await requestPage(shareUrl, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
+    if (res.status !== 200) return null;
+    const html = res.body.toString('utf8');
+    if (!html.includes('fallback_api')) return null;
+    for (const rawApi of extractFallbackApis(html)) {
+      if (vid && !rawApi.includes(vid)) continue;
+      const api = buildUnwatermarkedUrl(rawApi);
+      if (!api) continue;
+      try {
+        const vRes = await requestPage(api, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
+        if (vRes.status !== 200) continue;
+        let payload;
+        try {
+          payload = JSON.parse(vRes.body.toString('utf8'));
+        } catch (e) {
+          continue;
+        }
+        const picked = pickFplayVideo(payload);
+        if (picked && /lr=unwatermarked/.test(picked.url)) {
+          return { url: picked.url, cover: picked.cover || '' };
+        }
+      } catch (err) {
+        // 单条失败继续尝试
+      }
+    }
+  } catch (err) {
+    // SSR 兜底失败静默降级
+  }
+  return null;
+}
+
 async function parseDoubao(url) {
   const u = new URL(url);
   const shareId = u.searchParams.get('share_id') || '';
@@ -935,18 +987,32 @@ async function parseDoubao(url) {
     vid,
     creation_id: '',
   }, extraHeaders);
-  if (res.status !== 200) {
-    return { ok: false, error: '豆包服务无响应，请稍后重试' };
-  }
-  let j;
-  try {
-    j = JSON.parse(res.body);
-  } catch (e) {
-    return { ok: false, error: '豆包响应异常，请稍后重试' };
+  let j = null;
+  if (res.status === 200) {
+    try {
+      j = JSON.parse(res.body);
+    } catch (e) {
+      j = null;
+    }
   }
   const play = j && j.code === 0 && j.data && j.data.play_info && j.data.play_info.main;
   if (!play) {
-    return { ok: false, error: '豆包视频解析失败，请确认分享链接有效（作品可能已删除）' };
+    // 官方分享接口失效（分享过期/风控/仅登录可见）时兜底：分享页 SSR 内嵌 fplay
+    // 改参重放（自研无水印通道，游客态可用）。
+    const ssr = await tryDoubaoShareSsr(url, vid);
+    if (ssr) {
+      return {
+        ok: true,
+        play: ssr.url,
+        playNoMark: ssr.url,
+        title: '',
+        cover: ssr.cover,
+        size: 0,
+        note: '已通过分享页通道取回无水印原片',
+        referer: '', // 365yg 匿名直链带 Referer 会触发防盗链 403，实测不带才能下载
+      };
+    }
+    return { ok: false, error: '豆包视频解析失败，请确认分享链接有效（作品可能已删除或分享已过期）' };
   }
   const backup = (j.data && j.data.play_info && j.data.play_info.backup) || '';
   const title = String((j.data && j.data.prompt) || '').slice(0, 80);
