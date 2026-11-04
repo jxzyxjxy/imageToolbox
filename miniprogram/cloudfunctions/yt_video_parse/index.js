@@ -12,22 +12,20 @@
  *
  * 支持平台（按 URL 识别）：
  *   抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据；播放接口机房 IP 不可达，
- *                                           clientDownload 模式（前端直下）；失败走聚合通道兜底
+ *                                           clientDownload 模式（前端直下）
  *   豆包   doubao.com/thread/          —— SSR fallback_api + qAAB 解密（无水印原片）
- *   豆包   doubao.com/video-sharing     —— DOUBAO_COOKIE 登录态 get_play_info 直出
- *                                           lr=unwatermarked 原画流（自研，优先）；
- *                                           无 Cookie 时走聚合通道（服务端转存），
+ *   豆包   doubao.com/video-sharing     —— DOUBAO_COOKIE(S) 登录态 get_play_info 直出
+ *                                           lr=unwatermarked 原画流，或 fplay 改参重放；
  *                                           官方游客态仅水印流（穷举实证）；无直链降级 clientDownload
  *   可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
  *   即梦   jimeng.jianying.com/s/{code} —— 302 取 id → POST /mweb/v1/mget_item_info
  *   其他   .mp4 等视频直链直接转存
  *
- * 豆包自备凭证：DOUBAO_COOKIE（豆包网页端登录 Cookie，浏览器 F12 复制整行 Cookie）。
- * 登录态调 POST /samantha/video/get_play_info {"vid"}，作品生成方开启「去除AI生成
- * 水印」开关时直出无水印原画流——完全不依赖第三方，量级不受限。
- * 聚合通道（无 Cookie 时的兜底）：video.zacao.top（30+ 平台，豆包/抖音实测返回
- * 无水印原片直链，365yg CDN 对机房 IP 可达可服务端转存）。匿名额度 30 次/IP/小时，
- * 可配 ZACAO_API_KEY 提额。次级通道：api.xiaotuo.net（DOUBAO_API_KEY，接口 194 /doubao）。
+ * 豆包自备凭证：DOUBAO_COOKIE / DOUBAO_COOKIES（豆包网页端登录 Cookie，浏览器 F12
+ * 复制整行 Cookie；多账号换行分隔自动轮询分摊量级）。登录态调
+ * POST /samantha/video/get_play_info {"vid"} 直出无水印原画流；无直链时对 fplay
+ * 形态 URL 改 logo_type=unwatermarked 重放切换无水印转码——完全不依赖第三方。
+ * 聚合通道（zacao/xiaotuo）已停用，实现保留备查（见下方注释块）。
  *
  * clientDownload 通用降级：任何平台云函数下载失败（CDN 风控）时，
  * 自动降级为返回 play/playNoMark 直链由小程序端直下，不再向前端报死错误。
@@ -427,19 +425,6 @@ async function parseDouyin(url) {
     }
   }
   const detail = lastFilter ? `（${lastFilter}）` : '';
-  // 自有链路失败 → 聚合通道兜底（30+ 平台，抖音实测可解析），避免页面风控导致整体不可用
-  const backup = await callZacaoParse(url);
-  if (backup) {
-    return {
-      ok: true,
-      play: backup.url,
-      playNoMark: backup.url,
-      title: backup.title,
-      cover: backup.cover,
-      size: backup.size || 0,
-      note: '已取回无水印原片',
-    };
-  }
   return { ok: false, error: `抖音页面解析失败${detail}，请稍后重试` };
 }
 
@@ -754,6 +739,7 @@ function findXiaotuoVideo(obj, depth = 0) {
   return null;
 }
 
+// eslint-disable-next-line no-unused-vars
 async function callDoubaoNoMarkApi(shareUrl) {
   const apiKey = String(process.env.DOUBAO_API_KEY || '').trim();
   if (!apiKey) return null;
@@ -775,12 +761,13 @@ async function callDoubaoNoMarkApi(shareUrl) {
     return null;
   }
 }
-
-/* ---------------- 通用聚合通道（video.zacao.top） ----------------
- * 聚合 API（30+ 平台自动识别），豆包 video-sharing 实测返回 lr=unwatermarked
- * 原画流（21.6Mbps 原片码率，四角抽帧 LLM 复核确认无水印，CDN 对机房 IP 可达）。
- * 匿名额度 30 次/IP/小时；生产可配置 ZACAO_API_KEY 提升配额与稳定性。
+/* ---------------- 通用聚合通道（video.zacao.top / api.xiaotuo.net）----------------
+ * 【当前已停用】：自研登录态链路（DOUBAO_COOKIES）验证期，聚合通道不再参与调用。
+ * 实现保留备查：zacao 豆包实测返回 lr=unwatermarked 原画流（21.6Mbps 原片码率，
+ * 四角抽帧 LLM 复核确认无水印，CDN 对机房 IP 可达），匿名额度 30 次/IP/小时。
+ * 需重新启用时在 parseDoubao 的降级链中恢复 callZacaoParse 调用即可。
  */
+// eslint-disable-next-line no-unused-vars
 function extractZacaoVideo(j) {
   const d = j && j.data;
   if (!d || typeof d !== 'object') return null;
@@ -795,6 +782,7 @@ function extractZacaoVideo(j) {
   };
 }
 
+// eslint-disable-next-line no-unused-vars
 async function callZacaoParse(shareUrl) {
   const headers = {};
   const apiKey = String(process.env.ZACAO_API_KEY || '').trim();
@@ -982,15 +970,10 @@ async function parseDoubao(url) {
   // 1) DOUBAO_COOKIE(S) 登录态 get_play_info——直出 lr=unwatermarked 原画流；或对
   //    fplay 形态 URL 改 logo_type=unwatermarked 重放（doubao-nomark 同款手法），
   //    未开「去除AI生成水印」开关的作品同样可取无水印转码，完全不依赖第三方；
-  // 2) 聚合通道（zacao 匿名可用 / xiaotuo 需 Key）返回 lr=unwatermarked 原画直链
-  //    （365yg CDN 对机房 IP 可达，实测 27.7MB 全量下载成功）——服务端下载转存。
-  // 官方分享接口游客态仅发水印流（穷举实测），无直链时降级 clientDownload。
-  let noMark = await callDoubaoPlayInfo(vid);
-  const noMarkSource = noMark ? '官方登录态' : '';
-  if (!noMark) {
-    noMark = await callZacaoParse(url);
-    if (!noMark) noMark = await callDoubaoNoMarkApi(url);
-  }
+  // 2) 自研登录态通道（DOUBAO_COOKIES）：get_play_info 直出 lr=unwatermarked，
+  //    或对 fplay 形态 URL 改 logo_type=unwatermarked 重放（转码模板切换）。
+  //    官方分享接口游客态仅发水印流（穷举实测），无直链时降级 clientDownload。
+  const noMark = await callDoubaoPlayInfo(vid);
   if (noMark) {
     return {
       ok: true,
@@ -1000,14 +983,16 @@ async function parseDoubao(url) {
       title: noMark.title || title,
       cover: noMark.cover || cover,
       size: noMark.size || 0,
-      note: noMarkSource ? '已通过你的豆包登录态取回无水印原片' : '已取回豆包无水印原片',
+      note: '已通过你的豆包登录态取回无水印原片',
       referer: '', // 同上
     };
   }
-  const hasKey = Boolean(
-    String(process.env.ZACAO_API_KEY || '').trim() || String(process.env.DOUBAO_API_KEY || '').trim(),
+  const hasCookie = Boolean(
+    String(process.env.DOUBAO_COOKIE || '').trim() ||
+      String(process.env.DOUBAO_COOKIES || '')
+        .split(/\r?\n|;/)
+        .some((x) => x.trim().length > 8),
   );
-  const hasCookie = Boolean(String(process.env.DOUBAO_COOKIE || '').trim());
   return {
     ok: true,
     play,
@@ -1017,10 +1002,8 @@ async function parseDoubao(url) {
     size: 0,
     clientDownload: true,
     note: hasCookie
-      ? '该作品生成方未开启无水印开关，官方仅存水印版；已降级官方流（含水印）'
-      : hasKey
-        ? '无水印通道暂不可用，已降级官方流（含水印）'
-        : '官方分享仅提供带水印流；聚合通道恢复后自动取无水印原片',
+      ? '登录态未能取到该作品无水印流（Cookie 可能过期或该作品官方仅存水印版）；已降级官方流（含水印）'
+      : '未配置豆包登录态（DOUBAO_COOKIES），官方分享仅提供带水印流',
     referer: '', // 同上
   };
 }
