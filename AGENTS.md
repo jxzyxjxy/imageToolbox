@@ -67,8 +67,8 @@
 ## 云函数视频解析（miniprogram/cloudfunctions/yt_video_parse/index.js）
 
 - `FN_VERSION` 版本戳随返回下发（`exports.main` 包装 `ver` 字段），真机 toast 尾巴可见，用于排查「线上是否为最新部署」。
-- 豆包去水印链路（v12）：`parseDoubao` → **`callZacaoParse`（聚合通道最优先）** → 分享接口 `get_video_share_info`（拿 `source_info.message_id` + 水印流兜底）→ `callDoubaoPlayInfo`（Cookie get_play_info）→ **`callDoubaoMessageChannel`（消息通道）** → `tryDoubaoShareSsr` → 水印流 clientDownload 降级。
-- 聚合通道（v12 恢复启用）：`video.zacao.top/api/parse` `{text: shareUrl}`（可选 `ZACAO_API_KEY` 扩容，匿名 30 次/IP/小时），实测返回 lr=unwatermarked 原画流；额度耗尽 / 失败（实测 HTTP 502 + succ:false，~2s 快速失败）静默降级自研链路。
+- 豆包去水印链路（v13）：`parseDoubao` → 【`ZACAO_ENABLED=1` 时 `callZacaoParse` 聚合通道最优先】→ 分享接口 `get_video_share_info`（拿 `source_info.message_id` + 水印流兜底）→ `callDoubaoPlayInfo`（Cookie get_play_info）→ **`callDoubaoMessageChannel`（消息通道）** → `tryDoubaoShareSsr` → 水印流 clientDownload 降级。
+- 聚合通道（v13 开关控制，默认关闭）：自研直链验证期 zacao 不参与调用；验证通过后在云开发控制台加环境变量 `ZACAO_ENABLED=1` 即恢复最优先（无需改代码）。`video.zacao.top/api/parse` `{text: shareUrl}`（可选 `ZACAO_API_KEY` 扩容，匿名 30 次/IP/小时），实测返回 lr=unwatermarked 原画流；额度耗尽 / 失败（实测 HTTP 502 + succ:false，~2s 快速失败）静默降级自研链路。
 - 消息通道（自研，抓包 BDS 协议）：`fetchDoubaoConversations`（`alice/conversation/list`，query 必须带 `DOUBAO_IM_QUERY` 公共参数）→ `findDoubaoVideoFplay`（`im/chain/single` cmd:3100 翻页，Content-Type 必须为 `application/json; encoding=utf-8` 且带 `agw-js-conv: str` 头，翻页锚点 `next_index`）→ `extractFplayFromDoubaoMessage`（消息体 creation_block 内嵌 video_model JSON 的 fallback_api，token 绑 vid、url_expire 到 2036 年）→ `buildUnwatermarkedUrl` 改参重放（`logo_type=unwatermarked&codec_type=8`）→ `pickFplayVideo`（qAAB 解密 main_url）。
 - 凭证：云开发控制台环境变量 `DOUBAO_COOKIE` / `DOUBAO_COOKIES`（多账号换行分隔，`getDoubaoCookiePool` 读取）；无凭证时全链路仍 ok:true（水印流 clientDownload），不报错。
 - 豆包直下模式（v11）：`parseDoubao` 五处无水印/降级通道全部 `clientDownload: true`——云函数不下载转存 27MB+ 大文件（省 5~10s），直链（fplay url_expire 到 2036）由小程序端直下，解析压到 ~3s；云函数仅转存封面小图，yt_cleanup 清理负担大幅下降。
