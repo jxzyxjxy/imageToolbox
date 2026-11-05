@@ -84,6 +84,7 @@ export default function VideoParse() {
         ].filter((x): x is string => typeof x === 'string' && x.length > 0);
         let lastErr: unknown = new Error('视频下载失败，请稍后重试');
         let downloaded = false;
+        let domainBlocked = false;
         for (const cand of candidates) {
           try {
             const dl = await Taro.downloadFile({ url: cand });
@@ -95,18 +96,25 @@ export default function VideoParse() {
             downloaded = true;
             break;
           } catch (err: unknown) {
-            // downloadFile 域名白名单拦截：给出需配置的具体域名，方便后台自查
+            // downloadFile 域名白名单拦截：CDN 版本前缀变体多（豆包/抖音等），无法穷举预配，
+            // 不再提示补配域名——记录后继续试其他候选，全部失败自动切云函数转存兜底
             const errMsg = err && typeof err === 'object' && 'errMsg' in err ? String((err as { errMsg: string }).errMsg) : err instanceof Error ? err.message : '';
             if (errMsg.includes('url not in domain list')) {
-              let host = '';
-              try {
-                host = new URL(cand).hostname;
-              } catch {
-                host = '';
-              }
-              throw new Error(`需在微信公众平台 downloadFile 合法域名中添加：${host || '视频源域名'}`);
+              domainBlocked = true;
+              continue;
             }
             lastErr = err instanceof Error ? err : new Error('视频下载失败，请稍后重试');
+          }
+        }
+        if (!downloaded && domainBlocked && text) {
+          // 直链域名被白名单拦截：自动二次请求云函数转存（云函数下载+上传，约 10~15s）
+          Taro.showLoading({ title: '转存中，请稍候…', mask: true });
+          const relay = await parseVideoLink(text, { forceRelay: true });
+          if (relay.ok && relay.videoFileID) {
+            temp = await downloadTemp(relay.videoFileID);
+            downloaded = true;
+          } else {
+            throw new Error(relay.error || '视频转存失败，请稍后重试');
           }
         }
         if (!downloaded) throw lastErr;

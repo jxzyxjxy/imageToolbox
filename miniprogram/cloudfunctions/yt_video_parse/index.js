@@ -1703,7 +1703,9 @@ async function mainHandler(event) {
   // 抖音 clientDownload 模式：播放接口对机房 IP 整体关闭（404 空响应），
   // 服务器侧无法下载。改由小程序端 Taro.downloadFile 直下（走用户手机网络，
   // 与真实设备同源，接口正常 302 到 CDN）。云函数仅转存封面（douyinpic 图床可通）。
-  if (parsed.clientDownload) {
+  // event.forceRelay：直链域名被小程序白名单拦截时，前端自动二次请求走云函数转存
+  // （豆包等 CDN 版本前缀变体多无法穷举白名单，转存路径不依赖白名单，兜底保成功）。
+  if (parsed.clientDownload && !event.forceRelay) {
     const coverFileID = await uploadCoverIfAny(parsed, openid);
     return {
       ok: true,
@@ -1723,7 +1725,10 @@ async function mainHandler(event) {
   // 下载视频并转存云存储：主候选失败时依次尝试备用候选（接口变体）
   let videoBuf = null;
   let lastDlErr = null;
-  const dlCandidates = [parsed.play].concat(Array.isArray(parsed.playFallbacks) ? parsed.playFallbacks : []);
+  // 转存候选优先无水印通道（forceRelay / 覆盖兜底共用此列表）
+  const dlCandidates = [parsed.playNoMark, parsed.play]
+    .filter((x) => typeof x === 'string' && x.length > 0)
+    .concat(Array.isArray(parsed.playFallbacks) ? parsed.playFallbacks : []);
   for (const cand of dlCandidates.slice(0, 5)) {
     try {
       const buf = await downloadBuffer(cand, DOWNLOAD_TIMEOUT, MAX_VIDEO_BYTES, parsed.referer || '');

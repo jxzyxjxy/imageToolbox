@@ -170,6 +170,6 @@ export interface ParseVideoResponse {
  * 云函数内完成：链接解析 → 拉取视频流 → 转存云存储（绕开 downloadFile 域名白名单），
  * 耗时随视频体积增长（下载 + 上传），走 callTool 的 70s 兜底。
  */
-export async function parseVideoLink(text: string): Promise<ParseVideoResponse> {
-  return callTool<ParseVideoResponse>('yt_video_parse', { text });
+export async function parseVideoLink(text: string, opts?: { forceRelay?: boolean }): Promise<ParseVideoResponse> {
+  return callTool<ParseVideoResponse>('yt_video_parse', { text, forceRelay: !!(opts && opts.forceRelay) });
 }
