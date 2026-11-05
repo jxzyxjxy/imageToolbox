@@ -14,9 +14,11 @@
  *   抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据；播放接口机房 IP 不可达，
  *                                           clientDownload 模式（前端直下）
  *   豆包   doubao.com/thread/          —— SSR fallback_api + qAAB 解密（无水印原片）
- *   豆包   doubao.com/video-sharing     —— DOUBAO_COOKIE(S) 登录态 get_play_info 直出
- *                                           lr=unwatermarked 原画流，或 fplay 改参重放；
- *                                           官方游客态仅水印流（穷举实证）；无直链降级 clientDownload
+ *   豆包   doubao.com/video-sharing     —— 【v12】聚合通道（zacao）优先，免费额度
+ *                                           用尽 / 失败自动降级自研链路（DOUBAO_COOKIE(S)
+ *                                           登录态 get_play_info 直出 lr=unwatermarked
+ *                                           原画流，或 fplay 改参重放）；官方游客态仅
+ *                                           水印流（穷举实证）；全部 clientDownload 直下
  *   可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
  *   即梦   jimeng.jianying.com/s/{code} —— 302 取 id → POST /mweb/v1/mget_item_info
  *   B站    bilibili.com / b23.tv        —— pagelist 取 cid + playurl(platform=html5)
@@ -29,7 +31,8 @@
  * 复制整行 Cookie；多账号换行分隔自动轮询分摊量级）。登录态调
  * POST /samantha/video/get_play_info {"vid"} 直出无水印原画流；无直链时对 fplay
  * 形态 URL 改 logo_type=unwatermarked 重放切换无水印转码——完全不依赖第三方。
- * 聚合通道（zacao/xiaotuo）已停用，实现保留备查（见下方注释块）。
+ * 聚合通道（zacao）v12 恢复为豆包最优先（免费体验额度先行，用尽降级自研），
+ * 可选 ZACAO_API_KEY 环境变量扩容（见下方注释块）。
  *
  * clientDownload 通用降级：任何平台云函数下载失败（CDN 风控）时，
  * 自动降级为返回 play/playNoMark 直链由小程序端直下，不再向前端报死错误。
@@ -54,8 +57,8 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v11） */
-const FN_VERSION = 'v11';
+/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v12） */
+const FN_VERSION = 'v12';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
@@ -783,12 +786,12 @@ async function callDoubaoNoMarkApi(shareUrl) {
   }
 }
 /* ---------------- 通用聚合通道（video.zacao.top / api.xiaotuo.net）----------------
- * 【当前已停用】：自研登录态链路（DOUBAO_COOKIES）验证期，聚合通道不再参与调用。
- * 实现保留备查：zacao 豆包实测返回 lr=unwatermarked 原画流（21.6Mbps 原片码率，
- * 四角抽帧 LLM 复核确认无水印，CDN 对机房 IP 可达），匿名额度 30 次/IP/小时。
- * 需重新启用时在 parseDoubao 的降级链中恢复 callZacaoParse 调用即可。
+ * 【v12 恢复启用，豆包链路最优先】：zacao 实测返回 lr=unwatermarked 原画流
+ * （21.6Mbps 原片码率，四角抽帧 LLM 复核确认无水印）。免费体验额度有限
+ * （匿名 30 次/IP/小时，配 ZACAO_API_KEY 可扩容），额度耗尽 / 失败时
+ * callZacaoParse 返回 null，parseDoubao 静默降级自研链路（登录态 + 消息通道）。
+ * 失败形态实测：失效链接 HTTP 502 + succ:false（~2s 快速失败，不拖慢降级）。
  */
-// eslint-disable-next-line no-unused-vars
 function extractZacaoVideo(j) {
   const d = j && j.data;
   if (!d || typeof d !== 'object') return null;
@@ -803,7 +806,6 @@ function extractZacaoVideo(j) {
   };
 }
 
-// eslint-disable-next-line no-unused-vars
 async function callZacaoParse(shareUrl) {
   const headers = {};
   const apiKey = String(process.env.ZACAO_API_KEY || '').trim();
@@ -1157,6 +1159,23 @@ async function parseDoubao(url) {
   const vid = u.searchParams.get('video_id') || u.searchParams.get('vid') || '';
   if (!shareId || !vid) {
     return { ok: false, error: '豆包链接缺少分享参数，请使用 App 内「复制链接」获得的完整分享' };
+  }
+  // 聚合通道优先（v12 用户策略）：zacao 免费体验额度先行；额度耗尽 / 接口失败 /
+  // 返回无视频时静默降级自研链路（下方原有流程不变）。zacao 实测返回豆包官方
+  // lr=unwatermarked 原画流，走手机端直下与自研通道同架构。
+  const viaZacao = await callZacaoParse(url);
+  if (viaZacao) {
+    return {
+      ok: true,
+      play: viaZacao.url,
+      playNoMark: viaZacao.url,
+      title: String(viaZacao.title || '').slice(0, 80),
+      cover: viaZacao.cover,
+      size: viaZacao.size || 0,
+      clientDownload: true,
+      note: '已通过聚合通道取回无水印原片（手机端直下）',
+      referer: '', // 豆包系匿名直链带 Referer 会触发防盗链 403，实测不带才能下载
+    };
   }
   // 自备凭证：DOUBAO_COOKIE（豆包网页端登录 Cookie）。账号开通「去除AI生成水印」
   // 后（专业版无品牌水印），官方分享接口在登录态下可能直接下发无水印流。
