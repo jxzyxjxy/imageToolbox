@@ -1710,6 +1710,9 @@ async function mainHandler(event) {
       clientDownload: true,
       play: parsed.play,
       playNoMark: parsed.playNoMark || '',
+      // 透传多候选直链（share 页 url_list 变体 / play 接口 302 入口），
+      // 手机端逐个尝试，避免单一直链失效（时效/防盗链）导致下载失败
+      playFallbacks: Array.isArray(parsed.playFallbacks) ? parsed.playFallbacks.slice(0, 4) : [],
       title: parsed.title || '',
       coverFileID,
       size: 0,
@@ -1747,6 +1750,7 @@ async function mainHandler(event) {
       clientDownload: true,
       play: parsed.playNoMark || dlCandidates[0],
       playNoMark: parsed.playNoMark || '',
+      playFallbacks: dlCandidates.slice(1, 5),
       title: parsed.title || '',
       coverFileID,
       size: 0,

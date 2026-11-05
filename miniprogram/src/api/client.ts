@@ -153,6 +153,8 @@ export interface ParseVideoResponse {
   play?: string;
   /** 无水印优先通道（字节通用播放接口构造）；下载失败前端自动降级 play */
   playNoMark?: string;
+  /** 多候选直链（share 页变体/302 入口），手机端逐个尝试，单一直链失效时兜底 */
+  playFallbacks?: string[];
   /** 转存后的封面图 fileID */
   coverFileID?: string;
   title?: string;

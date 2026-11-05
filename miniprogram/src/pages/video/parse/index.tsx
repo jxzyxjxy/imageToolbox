@@ -77,9 +77,11 @@ export default function VideoParse() {
         // 抖音/豆包等：前端直下播放直链（用户网络可通，自动跟随 302 到 CDN）。
         // 豆包等平台优先尝试 playNoMark（无水印通道：字节通用播放接口），
         // 失败（HTTP 非 200）自动降级 play（官方流）。
-        const candidates = [result.playNoMark, result.play].filter(
-          (x): x is string => typeof x === 'string' && x.length > 0,
-        );
+        const candidates = [
+          result.playNoMark,
+          result.play,
+          ...(Array.isArray(result.playFallbacks) ? result.playFallbacks : []),
+        ].filter((x): x is string => typeof x === 'string' && x.length > 0);
         let lastErr: unknown = new Error('视频下载失败，请稍后重试');
         let downloaded = false;
         for (const cand of candidates) {
