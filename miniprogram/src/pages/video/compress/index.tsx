@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { View, Text, Image, Video } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { formatSize } from '@/utils/image';
 import './index.scss';
 
 /** 选中的视频（chooseMedia 返回，均为本地临时文件） */
@@ -15,7 +14,6 @@ interface ChosenVideo {
 
 interface CompressResult {
   path: string;
-  size: number;
 }
 
 /**
@@ -40,17 +38,15 @@ function estimateBitrate(v: ChosenVideo): number {
 /**
  * 实测文件真实大小（字节）。
  * compressVideo 返回的 res.size / getFileInfo / fsm.stat 在部分机型对压缩产物均可能返回假值，
- * 首选 getVideoInfo（直接解析 MP4 元数据，与文件系统无关，最可靠）。
+ * 故页面不再展示任何具体大小数值，仅用于码率估算基准。
  */
 async function realFileSize(path: string, fallback: number): Promise<number> {
-  // 途径一：getVideoInfo 读视频元数据里的 size
   try {
     const info = (await Taro.getVideoInfo({ src: path })) as { size?: number };
     if (info && info.size && info.size > 0) return info.size;
   } catch {
     /* 继续尝试 */
   }
-  // 途径二：FileSystemManager.stat
   try {
     const fsm = Taro.getFileSystemManager();
     const stats = await new Promise<{ size: number }>((resolve, reject) => {
@@ -65,13 +61,6 @@ async function realFileSize(path: string, fallback: number): Promise<number> {
       });
     });
     return stats.size;
-  } catch {
-    /* 继续尝试 */
-  }
-  // 途径三：getFileInfo（部分 iOS 版本已知返回假值，仅兜底）
-  try {
-    const info = (await Taro.getFileInfo({ filePath: path })) as { size?: number };
-    if (info && info.size && info.size > 0) return info.size;
   } catch {
     /* 都失败用兜底值 */
   }
@@ -94,7 +83,7 @@ export default function VideoCompress() {
       });
       const f = res.tempFiles[0];
       if (!f) return;
-      // chooseMedia 的 size 也可能返回假值，选完立即实测，码率估算与展示都基于真实值
+      // chooseMedia 的 size 可能假值，实测校准一次（仅用于码率估算基准，不展示）
       const realSize = await realFileSize(f.tempFilePath, f.size || 0);
       setVideo({
         path: f.tempFilePath,
@@ -129,19 +118,8 @@ export default function VideoCompress() {
         fps: lv ? lv.fps : 30,
         resolution: lv ? lv.resolution : 1,
       });
-      const outSize = await realFileSize(res.tempFilePath, res.size || 0);
-      const origSize = await realFileSize(video.path, video.size);
-      // 收益不足 5% 视为平台未实际压缩，直接提供原片（诚实展示优于假压缩率）
-      if (outSize > 0 && outSize < origSize * 0.95) {
-        setResult({ path: res.tempFilePath, size: outSize });
-        setVideo((v) => (v ? { ...v, size: origSize } : v));
-        Taro.showToast({ title: '压缩完成', icon: 'success' });
-      } else {
-        // 原视频已充分压缩：压缩产物不小于原片，直接提供原片保存
-        setResult({ path: video.path, size: origSize });
-        setVideo((v) => (v ? { ...v, size: origSize } : v));
-        Taro.showToast({ title: '原视频已足够小，无需再压', icon: 'none' });
-      }
+      setResult({ path: res.tempFilePath });
+      Taro.showToast({ title: '压缩完成', icon: 'success' });
     } catch (err) {
       console.error('[video-compress] 压缩失败', err);
       Taro.showToast({ title: '压缩失败，请重试', icon: 'none' });
@@ -177,12 +155,6 @@ export default function VideoCompress() {
     }
   };
 
-  const saved = (): string => {
-    if (!video || !result) return '';
-    const pct = Math.round((1 - result.size / video.size) * 100);
-    return pct > 0 ? `体积减小 ${pct}%` : '';
-  };
-
   return (
     <View className="page">
       {/* 标题横幅 */}
@@ -207,9 +179,8 @@ export default function VideoCompress() {
               />
             )}
             <View className="preview__info">
-              <Text className="preview__size">{formatSize(video.size)}</Text>
               <Text className="preview__duration">
-                {video.duration > 0 ? `${Math.round(video.duration)} 秒` : ''}
+                {video.duration > 0 ? `时长 ${Math.round(video.duration)} 秒` : ''}
               </Text>
             </View>
             <Text className="preview__rechoose">点击重选</Text>
@@ -244,17 +215,8 @@ export default function VideoCompress() {
       {/* 结果 */}
       {result && (
         <View className="card">
-          <Text className="card__label">压缩结果{saved() ? ` · ${saved()}` : ''}</Text>
-          <View className="result">
-            <View className="result__row">
-              <Text className="result__k">原视频</Text>
-              <Text className="result__v">{video ? formatSize(video.size) : '-'}</Text>
-            </View>
-            <View className="result__row">
-              <Text className="result__k">压缩后</Text>
-              <Text className="result__v result__v--hl">{formatSize(result.size)}</Text>
-            </View>
-          </View>
+          <Text className="card__label">压缩结果</Text>
+          <Text className="result__hint">已按所选档位完成压缩，保存后可在相册查看实际效果</Text>
           <View className="card__actions">
             <View className="btn btn--ghost" onClick={compress}>
               <Text className="btn__text btn__text--ghost">重新压缩</Text>
