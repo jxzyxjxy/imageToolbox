@@ -22,7 +22,23 @@ import Taro from '@tarojs/taro';
 interface ConsentFlow {
   hasAgreed(): boolean;
   request(onGranted: () => void, onRejected: () => void): void;
+  /** 纯预览声明全文（单按钮，不询问、不写记忆） */
+  preview(): void;
 }
+
+/**
+ * 全局弹窗锁：同一时刻只允许一个声明弹窗。
+ * 微信 showModal 在连点/转场时被吞会导致"再也弹不出来"，此锁丢弃并发请求。
+ */
+let modalInFlight = false;
+const acquireModal = (): boolean => {
+  if (modalInFlight) return false;
+  modalInFlight = true;
+  return true;
+};
+const releaseModal = (): void => {
+  modalInFlight = false;
+};
 
 function createConsentFlow(
   storageKey: string,
@@ -94,12 +110,14 @@ function createConsentFlow(
     }, 150);
   };
 
-  /** showModal 单次调用。结果：granted / rejected / error（技术故障） */
+  /** showModal 单次调用。结果：granted / rejected / error（技术故障）；已有弹窗在展示时静默忽略 */
   const showModalOnce = (cb: (result: 'granted' | 'rejected' | 'error') => void): void => {
+    if (!acquireModal()) return;
     let settled = false;
     const finish = (r: 'granted' | 'rejected' | 'error') => {
       if (settled) return;
       settled = true;
+      releaseModal();
       cb(r);
     };
     // 兜底：success/fail 均未触发（环境异常），按技术故障处理
@@ -120,7 +138,22 @@ function createConsentFlow(
     });
   };
 
-  return { hasAgreed, request };
+  /** 纯预览：单按钮展示全文，不询问、不写记忆；已有弹窗在展示时静默忽略 */
+  const preview = (): void => {
+    setTimeout(() => {
+      if (!acquireModal()) return;
+      Taro.showModal({
+        title: modalTitle,
+        content: modalContent,
+        showCancel: false,
+        confirmText: '我知道了',
+        confirmColor: '#6366f1',
+        complete: () => releaseModal(),
+      });
+    }, 80);
+  };
+
+  return { hasAgreed, request, preview };
 }
 
 /* ---------- 肖像权授权（图片 AI 工具） ---------- */
@@ -150,6 +183,8 @@ const videoFlow = createConsentFlow(
 );
 
 export const hasVideoConsent = (): boolean => videoFlow.hasAgreed();
+
+export const previewVideoConsent = (): void => videoFlow.preview();
 
 export function requestVideoConsent(
   onGranted: () => void,

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, Textarea } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { parseVideoLink } from '@/api/client';
-import { hasVideoConsent, requestVideoConsent } from '@/utils/consent';
+import { hasVideoConsent, previewVideoConsent, requestVideoConsent } from '@/utils/consent';
 import { parseResultCache } from '@/utils/parseResultCache';
 import './index.scss';
 
@@ -65,6 +65,11 @@ export default function VideoParse() {
   };
 
   const openConsent = () => {
+    // 已同意过：纯预览声明全文，不再询问
+    if (hasVideoConsent()) {
+      previewVideoConsent();
+      return;
+    }
     requestVideoConsent(
       () => setAuthed(true),
       () => console.log('[video-parse] 用户关闭声明弹窗'),
