@@ -1,41 +1,38 @@
 /**
- * 视频链接解析（取回无水印原片）：当前支持抖音 / 豆包 / 可灵 / 即梦 / B站分享链接 + 视频直链。
+ * 视频链接解析（取回无水印原片）：聚合通道优先 + 自研链路兜底 + 视频直链。
  * event: { text } —— 分享文案或链接（≤2000 字符）
  *
- * 流程：提取 URL → 识别平台 → 解析无水印源（原生 https，Node16 无全局 fetch）
- *       → 拉取视频流转存云存储（绕开小程序 downloadFile 域名白名单）
- *       → 返回 fileID（前端 downloadTemp + saveVideoToPhotosAlbum 保存）
+ * 流程：提取 URL → 聚合通道（zacao，全平台优先）→ 未命中走自研平台链路
+ *       → clientDownload 直链（前端 Taro.downloadFile）或云函数转存兜底
  *
  * 转存路径 yt/results/...（yt_cleanup 定时清理，保留 7 天），
  * 登记 yt_storage_files 集合（与 yt_generate/lib/storage.js 同约定）。
  * 返回: { ok, videoFileID, coverFileID, title, size, note, error? }
  *
- * 支持平台（按 URL 识别）：
- *   抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据；播放接口机房 IP 不可达，
- *                                           clientDownload 模式（前端直下）
- *   豆包   doubao.com/thread/          —— SSR fallback_api + qAAB 解密（无水印原片）
- *   豆包   doubao.com/video-sharing     —— 【v13】自研链路直下（ZACAO_ENABLED=1
- *                                           可切聚合通道优先）；DOUBAO_COOKIE(S)
- *                                           登录态 get_play_info 直出 lr=unwatermarked
- *                                           原画流，或 fplay 改参重放；官方游客态仅
- *                                           水印流（穷举实证）；全部 clientDownload 直下
- *   可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
- *   即梦   jimeng.jianying.com/s/{code} —— 302 取 id → POST /mweb/v1/mget_item_info
- *   B站    bilibili.com / b23.tv        —— pagelist 取 cid + playurl(platform=html5)
- *                                           游客态直出 720P mp4（无签名；view 族
- *                                           接口对机房 IP 412，故走 pagelist），
- *                                           CDN 域名变体多 → 云函数转存模式
- *   其他   .mp4 等视频直链直接转存
+ * 链路优先级（v15）：
+ *   1. 聚合通道 zacao（默认开启，ZACAO_DISABLED=1 可关）——覆盖平台最多
+ *      （快手/小红书/微博/头条/TikTok/视频号/公众号等），失败静默降级；
+ *   2. 自研链路（按 URL 识别，对已支持平台兜底）：
+ *      抖音   douyin.com / iesdouyin.com  —— share 页 SSR 数据；播放接口机房 IP
+ *                                            不可达，clientDownload 模式（前端直下）
+ *      豆包   doubao.com/thread/          —— SSR fallback_api + qAAB 解密（无水印原片）
+ *      豆包   doubao.com/video-sharing     —— DOUBAO_COOKIE(S) 登录态 get_play_info
+ *                                            直出 lr=unwatermarked 原画流，或 fplay
+ *                                            改参重放；消息通道兜底；全部直下
+ *      可灵   klingai.com/h5-app/share     —— GET  /api/app/creatives/query（免签名）
+ *      即梦   jimeng.jianying.com/s/{code} —— 302 取 id → POST /mweb/v1/mget_item_info
+ *      B站    bilibili.com / b23.tv        —— pagelist 取 cid + playurl(html5) 游客态
+ *                                            720P mp4；CDN 变体多 → 云函数转存模式
+ *   3. .mp4 等视频直链直接转存
  *
  * 豆包自备凭证：DOUBAO_COOKIE / DOUBAO_COOKIES（豆包网页端登录 Cookie，浏览器 F12
  * 复制整行 Cookie；多账号换行分隔自动轮询分摊量级）。登录态调
  * POST /samantha/video/get_play_info {"vid"} 直出无水印原画流；无直链时对 fplay
  * 形态 URL 改 logo_type=unwatermarked 重放切换无水印转码——完全不依赖第三方。
- * 聚合通道（zacao）v13 改为 ZACAO_ENABLED=1 开关控制（默认关闭走自研直链，
- * 验证通过后控制台加变量即恢复，见下方注释块）。
  *
  * clientDownload 通用降级：任何平台云函数下载失败（CDN 风控）时，
  * 自动降级为返回 play/playNoMark 直链由小程序端直下，不再向前端报死错误。
+ * 直链域名被白名单拦截时前端自动 forceRelay 二次请求走云函数转存（v13.2）。
  */
 const cloud = require('wx-server-sdk');
 const https = require('https');
@@ -57,8 +54,8 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v13） */
-const FN_VERSION = 'v14';
+/* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v15） */
+const FN_VERSION = 'v15';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
@@ -786,11 +783,12 @@ async function callDoubaoNoMarkApi(shareUrl) {
   }
 }
 /* ---------------- 通用聚合通道（video.zacao.top / api.xiaotuo.net）----------------
- * 【v13 开关控制，默认关闭】：自研直链链路验证期，zacao 暂不参与调用。
- * 验证通过后恢复方式：云开发控制台加环境变量 ZACAO_ENABLED=1（parseDoubao
- * 中该开关控制 callZacaoParse 最优先），无需改代码重新部署。
- * zacao 实测返回 lr=unwatermarked 原画流（21.6Mbps 原片码率，四角抽帧 LLM
- * 复核确认无水印）。免费体验额度（匿名 30 次/IP/小时，配 ZACAO_API_KEY 可
+ * 【v15 默认开启，全平台最优先】：zacao 覆盖平台远多于自研链路（快手/小红书/
+ * 微博/头条/TikTok/视频号/公众号/百度/腾讯新闻等，官方持续扩展）。mainHandler
+ * 对所有非直链先走 callZacaoParse，未命中静默降级自研链路（抖音/豆包/B站等
+ * 已有兜底的平台体验不受影响）。控制台加 ZACAO_DISABLED=1 可整体关闭。
+ * zacao 实测返回豆包官方 lr=unwatermarked 原画流（21.6Mbps 原片码率，四角抽帧
+ * LLM 复核确认无水印）。免费体验额度（匿名 30 次/IP/小时，配 ZACAO_API_KEY 可
  * 扩容）；额度耗尽 / 失败时 callZacaoParse 返回 null 静默降级自研链路。
  * 失败形态实测：失效链接 HTTP 502 + succ:false（~2s 快速失败，不拖慢降级）。
  */
@@ -1195,27 +1193,7 @@ async function parseDoubao(url) {
   if (!shareId || !vid) {
     return { ok: false, error: '豆包链接缺少分享参数，请使用 App 内「复制链接」获得的完整分享' };
   }
-  // 聚合通道（zacao，v13 改为开关控制，默认关闭）：自研直链验证期，先跑
-  // 「官方登录态 → 消息通道 → SSR」纯自研链路。验证通过后如需恢复 zacao 优先，
-  // 云开发控制台加环境变量 ZACAO_ENABLED=1 即可（无需改代码重新部署）。
-  // zacao 实测返回豆包官方 lr=unwatermarked 原画流；额度耗尽 / 失败（~2s 快速
-  // 失败）时 callZacaoParse 返回 null，静默降级自研链路（下方原有流程不变）。
-  if (process.env.ZACAO_ENABLED === '1') {
-    const viaZacao = await callZacaoParse(url);
-    if (viaZacao) {
-      return {
-        ok: true,
-        play: viaZacao.url,
-        playNoMark: viaZacao.url,
-        title: String(viaZacao.title || '').slice(0, 80),
-        cover: viaZacao.cover,
-        size: viaZacao.size || 0,
-        clientDownload: true,
-        note: '已通过聚合通道取回无水印原片（手机端直下）',
-        referer: '', // 豆包系匿名直链带 Referer 会触发防盗链 403，实测不带才能下载
-      };
-    }
-  }
+  // 聚合通道已在 mainHandler 全局优先调用（v15），此处不再重复请求（省额度+省时）。
   // 自备凭证：DOUBAO_COOKIE（豆包网页端登录 Cookie）。账号开通「去除AI生成水印」
   // 后（专业版无品牌水印），官方分享接口在登录态下可能直接下发无水印流。
   const extraHeaders = {};
@@ -1718,39 +1696,63 @@ async function mainHandler(event) {
   let parsed;
   if (/\.(mp4|m4v|mov|webm)(\?|#|$)/i.test(url)) {
     parsed = { ok: true, play: url, title: '', cover: '', note: '视频直链', referer: '' };
-  } else if (/doubao\.com|dola\.com/i.test(url)) {
-    try {
-      // /thread/ 对话分享走无水印链路（fallback_api + 解密）；video-sharing 走分享接口（水印流兜底）
-      parsed = /\/thread\//i.test(url) ? await parseDoubaoThread(url) : await parseDoubao(url);
-    } catch (err) {
-      return { ok: false, error: `豆包解析失败：${err.message || '网络异常'}` };
-    }
-  } else if (/klingai\.com/i.test(url)) {
-    try {
-      parsed = await parseKling(url);
-    } catch (err) {
-      return { ok: false, error: `可灵解析失败：${err.message || '网络异常'}` };
-    }
-  } else if (/jimeng\.jianying\.com/i.test(url)) {
-    try {
-      parsed = await parseJimeng(url);
-    } catch (err) {
-      return { ok: false, error: `即梦解析失败：${err.message || '网络异常'}` };
-    }
-  } else if (/bilibili\.com|b23\.tv/i.test(url)) {
-    try {
-      parsed = await parseBilibili(url);
-    } catch (err) {
-      return { ok: false, error: `B站解析失败：${err.message || '网络异常'}` };
-    }
-  } else if (/douyin\.com|iesdouyin\.com/i.test(url)) {
-    try {
-      parsed = await parseDouyin(url);
-    } catch (err) {
-      return { ok: false, error: `网络请求失败：${err.message || '未知错误'}` };
-    }
   } else {
-    return { ok: false, error: '当前支持抖音 / 豆包 / 可灵 / 即梦 / B站分享链接，更多平台陆续上线' };
+    // 聚合通道（zacao）v15 起默认开启、全平台最优先：覆盖平台远多于自研链路
+    // （快手/小红书/微博/头条/TikTok/视频号/公众号等），命中即返回直链由手机端
+    // 直下；未命中静默降级下方自研链路。ZACAO_DISABLED=1 可整体关闭。
+    if (process.env.ZACAO_DISABLED !== '1') {
+      const viaZacao = await callZacaoParse(url);
+      if (viaZacao) {
+        parsed = {
+          ok: true,
+          play: viaZacao.url,
+          playNoMark: viaZacao.url,
+          title: String(viaZacao.title || '').slice(0, 80),
+          cover: viaZacao.cover,
+          size: viaZacao.size || 0,
+          clientDownload: true,
+          note: '已通过聚合通道取回无水印原片（手机端直下）',
+          referer: '', // 聚合直链多为匿名 CDN，带 Referer 易触发防盗链 403
+        };
+      }
+    }
+    if (!parsed) {
+      if (/doubao\.com|dola\.com/i.test(url)) {
+        try {
+          // /thread/ 对话分享走无水印链路（fallback_api + 解密）；video-sharing 走分享接口（水印流兜底）
+          parsed = /\/thread\//i.test(url) ? await parseDoubaoThread(url) : await parseDoubao(url);
+        } catch (err) {
+          return { ok: false, error: `豆包解析失败：${err.message || '网络异常'}` };
+        }
+      } else if (/klingai\.com/i.test(url)) {
+        try {
+          parsed = await parseKling(url);
+        } catch (err) {
+          return { ok: false, error: `可灵解析失败：${err.message || '网络异常'}` };
+        }
+      } else if (/jimeng\.jianying\.com/i.test(url)) {
+        try {
+          parsed = await parseJimeng(url);
+        } catch (err) {
+          return { ok: false, error: `即梦解析失败：${err.message || '网络异常'}` };
+        }
+      } else if (/bilibili\.com|b23\.tv/i.test(url)) {
+        try {
+          parsed = await parseBilibili(url);
+        } catch (err) {
+          return { ok: false, error: `B站解析失败：${err.message || '网络异常'}` };
+        }
+      } else if (/douyin\.com|iesdouyin\.com/i.test(url)) {
+        try {
+          parsed = await parseDouyin(url);
+        } catch (err) {
+          return { ok: false, error: `网络请求失败：${err.message || '未知错误'}` };
+        }
+      } else {
+        // 不列举支持平台（聚合通道平台列表由第三方持续扩展，列出即过时）
+        return { ok: false, error: '暂不支持该链接，请确认分享内容完整后重试' };
+      }
+    }
   }
   if (!parsed.ok || !parsed.play) {
     return { ok: false, error: parsed.error || '解析失败，请检查链接' };
