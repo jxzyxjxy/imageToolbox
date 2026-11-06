@@ -91,7 +91,7 @@ const TOOLS: ToolItem[] = [
     path: '/pages/similar/index',
     ready: true,
   },
-  // 未就绪的工具沉底展示：置灰 + 「敬请期待」标签 + 点击 toast；恢复时改回 true 并挪回上方即可
+  // 未就绪工具：隐藏不展示。恢复时改回 ready: true 即可（页面已在 app.config 注册）
   {
     key: 'icon-splitter',
     name: '图标拆分',

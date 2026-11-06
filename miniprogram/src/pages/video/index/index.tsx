@@ -34,7 +34,7 @@ const VIDEO_TOOLS: VideoToolItem[] = [
     path: '/pages/video/compress/index',
     ready: true,
   },
-  // 未就绪工具置灰展示，恢复时改 ready 并保持在上方位即可
+  // 未就绪工具：隐藏不展示。恢复时改 ready: true 即可
   {
     key: 'convert',
     name: '格式转换',
@@ -115,26 +115,6 @@ export default function VideoIndex() {
             >
               <View className="card__tag-wrap">
                 <Text className="card__tag card__tag--ready">可用</Text>
-              </View>
-              <View className="card__icon" style={{ background: tool.gradient }}>
-                <Text className="card__icon-glyph">{tool.icon}</Text>
-              </View>
-              <Text className="card__name">{tool.name}</Text>
-              <Text className="card__desc">{tool.desc}</Text>
-            </View>
-          ))}
-        </View>
-
-        <Text className="section__title section__title--soon">即将上线</Text>
-        <View className="grid">
-          {VIDEO_TOOLS.filter((tool) => !tool.ready).map((tool) => (
-            <View
-              key={tool.key}
-              className="card card--disabled"
-              onClick={() => handleTap(tool)}
-            >
-              <View className="card__tag-wrap">
-                <Text className="card__tag card__tag--soon">敬请期待</Text>
               </View>
               <View className="card__icon" style={{ background: tool.gradient }}>
                 <Text className="card__icon-glyph">{tool.icon}</Text>
