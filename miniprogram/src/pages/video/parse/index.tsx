@@ -180,7 +180,6 @@ export default function VideoParse() {
           autoHeight
           onInput={(e) => setText(e.detail.value)}
         />
-        <Text className="card__tip">粘贴任意平台分享链接，自动识别解析</Text>
       </View>
 
       {/* 结果 */}
