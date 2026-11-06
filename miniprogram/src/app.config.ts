@@ -15,11 +15,12 @@ export default defineAppConfig({
     'pages/icon-splitter/index',
     'pages/video/compress/index',
     'pages/video/parse/index',
+    'pages/video/result/index',
   ],
   tabBar: {
     // 自定义 tabBar：实测该环境下官方 tabBar 图标文件（png/jpg 各种编码形态）全部裂图——
     // 「从代码包加载图标文件」这条机制本身不可用，故用组件自绘 + base64 内联图标，
-    // 从机制上消除文件加载环节；切页与高亮同步均走事件总线（页面上下文执行，带全路径兜底）。
+    // 从机制上消除文件加载环节；切页与高亮同步均事件总线（页面上下文执行，带全路径兜底）。
     // list 的 iconPath 仍需合法（页面注册依赖 list），jpg 文件保留在包内。
     custom: true,
     color: '#94a3b8',
