@@ -55,7 +55,7 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v15） */
-const FN_VERSION = 'v15';
+const FN_VERSION = 'v15.1';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
@@ -824,6 +824,16 @@ async function callZacaoParse(shareUrl) {
   } catch (err) {
     return null;
   }
+}
+
+/** 机器兜底标题不是真实标题（聚合通道对豆包等返回「豆包视频 v0269cg…」，自研链路
+ *  可能带纯 vid）：过滤为空串，前端据此隐藏「标题」Tab，不展示无意义内容 */
+function cleanTitle(t) {
+  const s = String(t || '').trim();
+  if (!s) return '';
+  if (/^.{0,8}视频\s*v[0-9a-zA-Z]{8,}$/.test(s)) return ''; // 平台名+视频+vid
+  if (/^v?[0-9a-zA-Z-]{16,}$/.test(s)) return ''; // 纯 vid / 数字 id
+  return s.slice(0, 80);
 }
 
 /* 登录态播放信息：POST /samantha/video/get_play_info {"vid"}（需 DOUBAO_COOKIE）。
@@ -1776,7 +1786,7 @@ async function mainHandler(event) {
       // 透传多候选直链（share 页 url_list 变体 / play 接口 302 入口），
       // 手机端逐个尝试，避免单一直链失效（时效/防盗链）导致下载失败
       playFallbacks: Array.isArray(parsed.playFallbacks) ? parsed.playFallbacks.slice(0, 4) : [],
-      title: parsed.title || '',
+      title: cleanTitle(parsed.title),
       coverFileID,
       size: 0,
       note: parsed.note || '已取回无水印原片',
@@ -1817,7 +1827,7 @@ async function mainHandler(event) {
       play: parsed.playNoMark || dlCandidates[0],
       playNoMark: parsed.playNoMark || '',
       playFallbacks: dlCandidates.slice(1, 5),
-      title: parsed.title || '',
+      title: cleanTitle(parsed.title),
       coverFileID,
       size: 0,
       note: '已取回视频源，保存时由手机网络直下',
@@ -1855,7 +1865,7 @@ async function mainHandler(event) {
     ok: true,
     videoFileID: upload.fileID,
     coverFileID,
-    title: parsed.title || '',
+    title: cleanTitle(parsed.title),
     size: videoBuf.length,
     note: parsed.note || '',
   };
