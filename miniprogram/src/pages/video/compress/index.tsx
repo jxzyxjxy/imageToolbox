@@ -18,11 +18,15 @@ interface CompressResult {
   size: number;
 }
 
-/** 压缩档位：按估算原码率的百分比钳制（bitrate 全平台生效；quality 仅 iOS） */
+/**
+ * 压缩档位：bitrate 全平台生效（Android 主导）；quality 仅 iOS；resolution/fps 仅 iOS。
+ * 小巧档额外降分辨率（0.75x）强制拉开产物差异——iOS 上 bitrate 可能无效，
+ * 分辨率缩放是 iOS 唯一可靠的体积差异化手段。
+ */
 const LEVELS = [
-  { key: 'high', name: '高清', desc: '画质优先，适度减小体积', ratio: 0.75, min: 500, max: 6000 },
-  { key: 'medium', name: '均衡', desc: '画质与体积兼顾', ratio: 0.5, min: 400, max: 4000 },
-  { key: 'low', name: '小巧', desc: '体积优先，便于分享传输', ratio: 0.3, min: 250, max: 2500 },
+  { key: 'high', name: '高清', desc: '画质优先，适度减小体积', ratio: 0.75, min: 500, max: 6000, resolution: 1, fps: 30 },
+  { key: 'medium', name: '均衡', desc: '画质与体积兼顾', ratio: 0.5, min: 400, max: 4000, resolution: 1, fps: 30 },
+  { key: 'low', name: '小巧', desc: '体积优先，便于分享传输', ratio: 0.3, min: 250, max: 2500, resolution: 0.75, fps: 24 },
 ] as const;
 
 type LevelKey = (typeof LEVELS)[number]['key'];
@@ -35,12 +39,13 @@ function estimateBitrate(v: ChosenVideo): number {
 
 /**
  * 实测文件真实大小（字节）。
- * compressVideo 返回的 res.size 部分机型是假值（实测 3KB），禁止直接用于展示。
+ * compressVideo 返回的 res.size / getFileInfo / fsm.stat 在部分机型对压缩产物均可能返回假值，
+ * 首选 getVideoInfo（直接解析 MP4 元数据，与文件系统无关，最可靠）。
  */
 async function realFileSize(path: string, fallback: number): Promise<number> {
-  // 途径一：getFileInfo
+  // 途径一：getVideoInfo 读视频元数据里的 size
   try {
-    const info = (await Taro.getFileInfo({ filePath: path })) as { size?: number };
+    const info = (await Taro.getVideoInfo({ src: path })) as { size?: number };
     if (info && info.size && info.size > 0) return info.size;
   } catch {
     /* 继续尝试 */
@@ -60,6 +65,13 @@ async function realFileSize(path: string, fallback: number): Promise<number> {
       });
     });
     return stats.size;
+  } catch {
+    /* 继续尝试 */
+  }
+  // 途径三：getFileInfo（部分 iOS 版本已知返回假值，仅兜底）
+  try {
+    const info = (await Taro.getFileInfo({ filePath: path })) as { size?: number };
+    if (info && info.size && info.size > 0) return info.size;
   } catch {
     /* 都失败用兜底值 */
   }
@@ -82,10 +94,12 @@ export default function VideoCompress() {
       });
       const f = res.tempFiles[0];
       if (!f) return;
+      // chooseMedia 的 size 也可能返回假值，选完立即实测，码率估算与展示都基于真实值
+      const realSize = await realFileSize(f.tempFilePath, f.size || 0);
       setVideo({
         path: f.tempFilePath,
         thumb: f.thumbTempFilePath || '',
-        size: f.size || 0,
+        size: realSize,
         duration: f.duration || 0,
       });
       setResult(null);
@@ -112,12 +126,13 @@ export default function VideoCompress() {
         bitrate,
         // Taro 类型要求三参齐传（微信端 bitrate 主导，quality 仅 iOS 生效）
         quality: lv ? lv.key : 'medium',
-        fps: 30,
-        resolution: 1,
+        fps: lv ? lv.fps : 30,
+        resolution: lv ? lv.resolution : 1,
       });
       const outSize = await realFileSize(res.tempFilePath, res.size || 0);
       const origSize = await realFileSize(video.path, video.size);
-      if (outSize > 0 && outSize < origSize) {
+      // 收益不足 5% 视为平台未实际压缩，直接提供原片（诚实展示优于假压缩率）
+      if (outSize > 0 && outSize < origSize * 0.95) {
         setResult({ path: res.tempFilePath, size: outSize });
         setVideo((v) => (v ? { ...v, size: origSize } : v));
         Taro.showToast({ title: '压缩完成', icon: 'success' });
