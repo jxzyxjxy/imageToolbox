@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Textarea } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { parseVideoLink } from '@/api/client';
@@ -8,13 +8,25 @@ import './index.scss';
 
 /**
  * 链接取回原片（输入页）：粘贴分享链接 → 解析 → 跳转结果页预览/下载。
- * 按钮紧随输入框（下方整块预留广告位）；首次点「立即解析」弹声明确认，
- * 同意后记住（后续无感）。结果展示与保存全部移至 result 页。
+ * 按钮紧随输入框，下方留白接广告。未同意过：进页面自动弹声明；
+ * 同意后记住（后续无感）。结果展示与保存全部在 result 页。
  */
 export default function VideoParse() {
   const [authed, setAuthed] = useState(() => hasVideoConsent());
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
+
+  // 未同意过：进页面自动弹声明（延迟等页面转场结束，避免弹窗被吞）
+  useEffect(() => {
+    if (hasVideoConsent()) return;
+    const timer = setTimeout(() => {
+      requestVideoConsent(
+        () => setAuthed(true),
+        () => console.log('[video-parse] 用户关闭声明弹窗'),
+      );
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
 
   const pasteFromClipboard = async () => {
     try {
@@ -109,11 +121,6 @@ export default function VideoParse() {
           <Text className="legal__text">使用即代表同意</Text>
           <Text className="legal__link">《用户声明及版权免责声明》</Text>
         </View>
-      </View>
-
-      {/* 广告位预留（接入时替换为 ad 组件） */}
-      <View className="ad-slot">
-        <Text className="ad-slot__text">广告位</Text>
       </View>
     </View>
   );

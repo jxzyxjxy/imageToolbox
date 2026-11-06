@@ -56,16 +56,33 @@ export default function ParseResult() {
     return `${Math.floor(s / 60)}分${s % 60}秒`;
   };
 
+  const copyText = async (data: string, label: string) => {
+    try {
+      await Taro.setClipboardData({ data });
+    } catch (err: unknown) {
+      // 真机常见根因：小程序后台《用户隐私保护指引》未声明「剪贴板」，
+      // 报 "fail api scope is not declared from the privacy api"
+      const errMsg =
+        err && typeof err === 'object' && 'errMsg' in err
+          ? String((err as { errMsg: string }).errMsg)
+          : err instanceof Error
+            ? err.message
+            : '';
+      console.error('[result] copy failed:', errMsg);
+      if (errMsg.includes('privacy') || errMsg.includes('not declared')) {
+        Taro.showToast({ title: '复制失败：小程序需声明剪贴板权限', icon: 'none', duration: 2500 });
+        return;
+      }
+      Taro.showToast({ title: `${label}失败`, icon: 'none' });
+    }
+  };
+
   const copyLink = async () => {
     if (!videoSrc) {
       Taro.showToast({ title: '暂无可复制的链接', icon: 'none' });
       return;
     }
-    try {
-      await Taro.setClipboardData({ data: videoSrc });
-    } catch {
-      Taro.showToast({ title: '复制失败', icon: 'none' });
-    }
+    await copyText(videoSrc, '复制');
   };
 
   const copyTitle = async () => {
@@ -74,11 +91,7 @@ export default function ParseResult() {
       Taro.showToast({ title: '该分享未提供标题', icon: 'none' });
       return;
     }
-    try {
-      await Taro.setClipboardData({ data: t });
-    } catch {
-      Taro.showToast({ title: '复制失败', icon: 'none' });
-    }
+    await copyText(t, '复制');
   };
 
   const saveCover = async () => {
@@ -221,10 +234,12 @@ export default function ParseResult() {
     );
   }
 
+  // Tab 按实际内容渲染：无封面不显示「封面」，无真实标题不显示「标题」
+  // （云函数已过滤机器兜底标题，此处再兜一层）
   const tabs: Array<{ key: ResultTab; label: string }> = [
     { key: 'video', label: '视频' },
-    { key: 'cover', label: '封面' },
-    { key: 'title', label: '标题' },
+    ...(result.coverFileID ? [{ key: 'cover' as ResultTab, label: '封面' }] : []),
+    ...(result.title ? [{ key: 'title' as ResultTab, label: '标题' }] : []),
   ];
 
   return (
@@ -332,7 +347,7 @@ export default function ParseResult() {
 
       {tab === 'title' && (
         <View className="card">
-          <Text className="title-text">{result.title || '（该分享未提供标题）'}</Text>
+          <Text className="title-text">{result.title}</Text>
           {result.note ? <Text className="title-note">{result.note}</Text> : null}
           {result.ver ? (
             <Text className="title-note">解析引擎 {result.ver}</Text>
@@ -344,11 +359,6 @@ export default function ParseResult() {
           </View>
         </View>
       )}
-
-      {/* 广告位预留（接入时替换为 ad 组件） */}
-      <View className="ad-slot">
-        <Text className="ad-slot__text">广告位</Text>
-      </View>
     </View>
   );
 }
