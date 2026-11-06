@@ -58,7 +58,7 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* 云函数版本戳：前端展示，用于确认线上跑的是最新代码（部署后应显示 v13） */
-const FN_VERSION = 'v13';
+const FN_VERSION = 'v14';
 
 /* ---------------- HTTP 工具（原生 https，手动跟随重定向） ---------------- */
 
@@ -1089,30 +1089,63 @@ async function findDoubaoVideoFplay(cookie, conversationId, messageId, maxPages 
   return '';
 }
 
-/** 消息通道组合：Cookie 轮换 → 对话列表 → 逐对话翻页找生成消息 → fplay 改参重放取无水印流 */
-async function callDoubaoMessageChannel(vid, messageId) {
+/** 单对话解析：翻页找 fplay → 改参重放 → 校验 lr=unwatermarked，命中返回 {url, cover} */
+async function resolveFplayInConv(cookie, conversationId, vid, messageId) {
+  const fplay = await findDoubaoVideoFplay(cookie, conversationId, messageId);
+  if (!fplay || !fplay.includes(vid)) return null; // fplay token 服务端绑定 vid
+  const api = buildUnwatermarkedUrl(fplay);
+  if (!api) return null;
+  const vRes = await requestPage(api, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
+  if (vRes.status !== 200) return null;
+  let payload = null;
+  try {
+    payload = JSON.parse(vRes.body.toString('utf8'));
+  } catch (e) {
+    return null;
+  }
+  const picked = pickFplayVideo(payload);
+  if (picked && /lr=unwatermarked/.test(picked.url)) {
+    return { url: picked.url, cover: picked.cover || '' };
+  }
+  return null;
+}
+
+/** 并行扫对话找目标 fplay：限并发 3（防 IM 风控），同组对话 wall 时间取 max 而非求和 */
+async function scanConversationsForFplay(cookie, convs, vid, messageId) {
+  const CONCURRENCY = 3;
+  for (let i = 0; i < convs.length; i += CONCURRENCY) {
+    const group = convs.slice(i, i + CONCURRENCY);
+    const hits = await Promise.all(
+      group.map((conv) => resolveFplayInConv(cookie, conv.id, vid, messageId).catch(() => null)),
+    );
+    for (const hit of hits) {
+      if (hit) return hit; // 组内任一命中即用（同一 message_id 只属于一个对话）
+    }
+  }
+  return null;
+}
+
+/** 消息通道组合：Cookie 轮换 → 对话列表 → 并行扫对话找生成消息 → fplay 改参重放取无水印流。
+ * opts.preloaded: { cookie, convs }——parseDoubao 在等 playInfo 时并行预取的对话列表（同 Cookie 复用）。 */
+async function callDoubaoMessageChannel(vid, messageId, opts) {
   if (!vid || !messageId) return null;
-  for (const cookie of rotateCookiePool(getDoubaoCookiePool())) {
+  const preloaded = (opts && opts.preloaded) || null;
+  const cookies =
+    opts && Array.isArray(opts.cookies) && opts.cookies.length
+      ? opts.cookies
+      : rotateCookiePool(getDoubaoCookiePool());
+  for (const cookie of cookies) {
     try {
-      const convs = await fetchDoubaoConversations(cookie);
-      for (const conv of convs) {
-        const fplay = await findDoubaoVideoFplay(cookie, conv.id, messageId);
-        if (!fplay || !fplay.includes(vid)) continue; // fplay token 服务端绑定 vid
-        const api = buildUnwatermarkedUrl(fplay);
-        if (!api) continue;
-        const vRes = await requestPage(api, PAGE_TIMEOUT, 5, '', DOUBAO_HEADERS);
-        if (vRes.status !== 200) continue;
-        let payload = null;
-        try {
-          payload = JSON.parse(vRes.body.toString('utf8'));
-        } catch (e) {
-          continue;
-        }
-        const picked = pickFplayVideo(payload);
-        if (picked && /lr=unwatermarked/.test(picked.url)) {
-          return { url: picked.url, cover: picked.cover || '' };
-        }
-      }
+      const convs =
+        preloaded && preloaded.cookie === cookie && Array.isArray(preloaded.convs)
+          ? preloaded.convs
+          : await fetchDoubaoConversations(cookie);
+      const t0 = Date.now();
+      const hit = await scanConversationsForFplay(cookie, convs, vid, messageId);
+      console.log(
+        `[doubao-timing] msg-scan ${Date.now() - t0}ms (convs=${convs.length}${hit ? ' hit' : ''})`,
+      );
+      if (hit) return hit;
     } catch (err) {
       // 当前 Cookie 失败（过期/风控），轮换下一个
     }
@@ -1188,11 +1221,13 @@ async function parseDoubao(url) {
   const extraHeaders = {};
   const doubaoCookie = String(process.env.DOUBAO_COOKIE || '').trim();
   if (doubaoCookie) extraHeaders['Cookie'] = doubaoCookie;
+  const t0 = Date.now();
   const res = await requestPostJson('https://www.doubao.com/creativity/share/get_video_share_info', {
     share_id: shareId,
     vid,
     creation_id: '',
   }, extraHeaders);
+  const tShare = Date.now();
   let j = null;
   if (res.status === 200) {
     try {
@@ -1248,8 +1283,26 @@ async function parseDoubao(url) {
   // 命中任一通道即 clientDownload：AI 生成原片码率可达 22Mbps（27MB+），云函数
   // 下载+转存需 5~10s；fplay 直链 url_expire 到 2036 年长期有效，手机端直下
   // 把解析耗时压到 ~3s，也不再产生大体积临时文件（yt_cleanup 只需清封面小图）。
+  // 提速（v14）：消息通道的对话列表与 get_play_info 无依赖——等 playInfo 期间
+  // 并行预取对话列表，命中消息通道时省 1~2s；对话扫描改 3 并发（原串行求和改
+  // 组内取 max），多对话场景显著提速。
+  const sourceInfo = (j && j.data && j.data.source_info) || null;
+  const messageId = sourceInfo ? String(sourceInfo.message_id || '') : '';
+  const msgCookies = rotateCookiePool(getDoubaoCookiePool());
+  const msgFirstCookie = msgCookies[0] || '';
+  const convsPreload =
+    messageId && msgFirstCookie
+      ? fetchDoubaoConversations(msgFirstCookie)
+          .then((convs) => ({ cookie: msgFirstCookie, convs }))
+          .catch(() => null)
+      : null;
+  const tPlay0 = Date.now();
   const noMark = await callDoubaoPlayInfo(vid);
+  console.log(
+    `[doubao-timing] share=${tShare - t0}ms playInfo=${Date.now() - tPlay0}ms(${noMark ? 'hit' : 'miss'})`,
+  );
   if (noMark) {
+    // playInfo 已命中：预取的对话列表直接丢弃（多一次列表请求，无副作用）
     return {
       ok: true,
       play: noMark.url,
@@ -1266,10 +1319,16 @@ async function parseDoubao(url) {
   // 2) 消息通道（v10 自研）：分享元数据带 message_id 时，去作者本人的豆包对话里
   //    翻出「视频生成好了」消息，从内嵌 video_model 的 fplay 改参重放取无水印原画流。
   //    实测该通道对 video-sharing 分享（官方接口仅发水印流的场景）有效。
-  const sourceInfo = (j && j.data && j.data.source_info) || null;
-  const messageId = sourceInfo ? String(sourceInfo.message_id || '') : '';
   if (messageId) {
-    const viaMsg = await callDoubaoMessageChannel(vid, messageId);
+    const preloaded = convsPreload ? await convsPreload : null;
+    const tMsg0 = Date.now();
+    const viaMsg = await callDoubaoMessageChannel(vid, messageId, {
+      cookies: msgCookies,
+      preloaded,
+    });
+    console.log(
+      `[doubao-timing] msg-channel=${Date.now() - tMsg0}ms(${viaMsg ? 'hit' : 'miss'}) total=${Date.now() - t0}ms`,
+    );
     if (viaMsg) {
       return {
         ok: true,
@@ -1802,6 +1861,10 @@ async function mainHandler(event) {
 
 /* 版本戳出口包装：任何返回（含失败）都带 ver，便于确认线上云函数版本 */
 exports.main = async (event) => {
+  const t0 = Date.now();
   const r = await mainHandler(event);
+  console.log(
+    `[timing] total=${Date.now() - t0}ms ver=${FN_VERSION} client=${r && r.clientDownload ? 1 : 0} relay=${r && r.videoFileID ? 1 : 0}`,
+  );
   return { ver: FN_VERSION, ...r };
 };
