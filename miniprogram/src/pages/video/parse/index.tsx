@@ -81,7 +81,9 @@ export default function VideoParse() {
           result.playNoMark,
           result.play,
           ...(Array.isArray(result.playFallbacks) ? result.playFallbacks : []),
-        ].filter((x): x is string => typeof x === 'string' && x.length > 0);
+        ]
+          .filter((x): x is string => typeof x === 'string' && x.length > 0)
+          .filter((x, i, arr) => arr.indexOf(x) === i); // 去重：聚合通道 play/playNoMark 同链
         let lastErr: unknown = new Error('视频下载失败，请稍后重试');
         let downloaded = false;
         let domainBlocked = false;
@@ -178,7 +180,7 @@ export default function VideoParse() {
           autoHeight
           onInput={(e) => setText(e.detail.value)}
         />
-        <Text className="card__tip">支持抖音 / 豆包 / 可灵 / 即梦分享链接</Text>
+        <Text className="card__tip">粘贴任意平台分享链接，自动识别解析</Text>
       </View>
 
       {/* 结果 */}

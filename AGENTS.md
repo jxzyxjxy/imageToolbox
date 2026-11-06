@@ -67,9 +67,11 @@
 ## 云函数视频解析（miniprogram/cloudfunctions/yt_video_parse/index.js）
 
 - `FN_VERSION` 版本戳随返回下发（`exports.main` 包装 `ver` 字段，尾部带 `[timing]` 总耗时日志），真机 toast 尾巴可见，用于排查「线上是否为最新部署」。
-- 豆包去水印链路（v14）：`parseDoubao` → 【`ZACAO_ENABLED=1` 时 `callZacaoParse` 聚合通道最优先】→ 分享接口 `get_video_share_info`（拿 `source_info.message_id` + 水印流兜底）→ `callDoubaoPlayInfo`（Cookie get_play_info）→ **`callDoubaoMessageChannel`（消息通道）** → `tryDoubaoShareSsr` → 水印流 clientDownload 降级。
+- **链路优先级（v15）**：`mainHandler` 对所有非直链先走聚合通道 `callZacaoParse`（`ZACAO_DISABLED=1` 可关，默认开启）——zacao 覆盖平台最多（快手/小红书/微博/头条/TikTok/视频号/公众号/百度/腾讯新闻等），命中即 `clientDownload` 直下；未命中静默降级自研链路（抖音/豆包/可灵/即梦/B站）。匿名 30 次/IP/小时，配 `ZACAO_API_KEY` 扩容。
+- zacao 代理 URL：B站/小红书等 Referer 敏感 CDN，zacao 返回 `video.zacao.top/api/video/stream?url=...&referer=...` 代拉地址（HTTP 200 video/mp4，实测可下）——**`video.zacao.top` 必须在 downloadFile 白名单**；抖音/豆包系仍返回 CDN 直链。
+- 豆包去水印链路（v14）：`parseDoubao` → 分享接口 `get_video_share_info`（拿 `source_info.message_id` + 水印流兜底）→ `callDoubaoPlayInfo`（Cookie get_play_info）→ **`callDoubaoMessageChannel`（消息通道）** → `tryDoubaoShareSsr` → 水印流 clientDownload 降级。
 - 消息通道提速（v14）：等 `callDoubaoPlayInfo` 期间**并行预取**会话列表（`convsPreload` promise，命中消息通道时零等待复用）；对话扫描 `scanConversationsForFplay` 并发 3（`resolveFplayInConv` 拆分单对话解析，组内 `Promise.all` 取 max 而非串行求和）；`[doubao-timing]` share/playInfo/msg-channel/msg-scan + `[timing]` total 全链路埋点（云函数日志可直接定位慢在哪一段）。
-- 聚合通道（v13 开关控制，默认关闭）：自研直链验证期 zacao 不参与调用；验证通过后在云开发控制台加环境变量 `ZACAO_ENABLED=1` 即恢复最优先（无需改代码）。`video.zacao.top/api/parse` `{text: shareUrl}`（可选 `ZACAO_API_KEY` 扩容，匿名 30 次/IP/小时），实测返回 lr=unwatermarked 原画流；额度耗尽 / 失败（实测 HTTP 502 + succ:false，~2s 快速失败）静默降级自研链路。
+- 聚合通道（v15 默认开启）：`video.zacao.top/api/parse` `{text: shareUrl}`（可选 `ZACAO_API_KEY` 扩容，匿名 30 次/IP/小时），`mainHandler` 全平台最优先调用，失败（实测 HTTP 502 + succ:false，~2s 快速失败）静默降级自研链路；`ZACAO_DISABLED=1` 整体关闭。前端不展示具体支持平台（第三方列表持续扩展，列出即过时）。
 - 消息通道（自研，抓包 BDS 协议）：`fetchDoubaoConversations`（`alice/conversation/list`，query 必须带 `DOUBAO_IM_QUERY` 公共参数）→ `findDoubaoVideoFplay`（`im/chain/single` cmd:3100 翻页，Content-Type 必须为 `application/json; encoding=utf-8` 且带 `agw-js-conv: str` 头，翻页锚点 `next_index`）→ `extractFplayFromDoubaoMessage`（消息体 creation_block 内嵌 video_model JSON 的 fallback_api，token 绑 vid、url_expire 到 2036 年）→ `buildUnwatermarkedUrl` 改参重放（`logo_type=unwatermarked&codec_type=8`）→ `pickFplayVideo`（qAAB 解密 main_url）。
 - 凭证：云开发控制台环境变量 `DOUBAO_COOKIE` / `DOUBAO_COOKIES`（多账号换行分隔，`getDoubaoCookiePool` 读取）；无凭证时全链路仍 ok:true（水印流 clientDownload），不报错。
 - 豆包直下模式（v11）：`parseDoubao` 五处无水印/降级通道全部 `clientDownload: true`——云函数不下载转存 27MB+ 大文件（省 5~10s），直链（fplay url_expire 到 2036）由小程序端直下，解析压到 ~3s；云函数仅转存封面小图，yt_cleanup 清理负担大幅下降。
