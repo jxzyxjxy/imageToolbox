@@ -32,7 +32,7 @@ const VIDEO_TOOLS: VideoToolItem[] = [
     icon: '🗜️',
     gradient: 'linear-gradient(135deg, #10b981, #22c55e)',
     path: '/pages/video/compress/index',
-    ready: true,
+    ready: false, // 平台 compressVideo 真机表现不稳定，暂隐藏
   },
   // 未就绪工具：隐藏不展示。恢复时改 ready: true 即可
   {
