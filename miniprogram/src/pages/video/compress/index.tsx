@@ -33,6 +33,39 @@ function estimateBitrate(v: ChosenVideo): number {
   return Math.round((v.size * 8) / v.duration / 1000);
 }
 
+/**
+ * 实测文件真实大小（字节）。
+ * compressVideo 返回的 res.size 部分机型是假值（实测 3KB），禁止直接用于展示。
+ */
+async function realFileSize(path: string, fallback: number): Promise<number> {
+  // 途径一：getFileInfo
+  try {
+    const info = (await Taro.getFileInfo({ filePath: path })) as { size?: number };
+    if (info && info.size && info.size > 0) return info.size;
+  } catch {
+    /* 继续尝试 */
+  }
+  // 途径二：FileSystemManager.stat
+  try {
+    const fsm = Taro.getFileSystemManager();
+    const stats = await new Promise<{ size: number }>((resolve, reject) => {
+      fsm.stat({
+        path,
+        success: (r) => {
+          const s = (r as { stats?: { size?: number } }).stats;
+          if (s && s.size && s.size > 0) resolve({ size: s.size });
+          else reject(new Error('bad stats'));
+        },
+        fail: reject,
+      });
+    });
+    return stats.size;
+  } catch {
+    /* 都失败用兜底值 */
+  }
+  return fallback;
+}
+
 export default function VideoCompress() {
   const [video, setVideo] = useState<ChosenVideo | null>(null);
   const [level, setLevel] = useState<LevelKey>('medium');
@@ -82,13 +115,16 @@ export default function VideoCompress() {
         fps: 30,
         resolution: 1,
       });
-      const outSize = res.size || 0;
-      if (outSize > 0 && outSize < video.size) {
+      const outSize = await realFileSize(res.tempFilePath, res.size || 0);
+      const origSize = await realFileSize(video.path, video.size);
+      if (outSize > 0 && outSize < origSize) {
         setResult({ path: res.tempFilePath, size: outSize });
+        setVideo((v) => (v ? { ...v, size: origSize } : v));
         Taro.showToast({ title: '压缩完成', icon: 'success' });
       } else {
         // 原视频已充分压缩：压缩产物不小于原片，直接提供原片保存
-        setResult({ path: video.path, size: video.size });
+        setResult({ path: video.path, size: origSize });
+        setVideo((v) => (v ? { ...v, size: origSize } : v));
         Taro.showToast({ title: '原视频已足够小，无需再压', icon: 'none' });
       }
     } catch (err) {
