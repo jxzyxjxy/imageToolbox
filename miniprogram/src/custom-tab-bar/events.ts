@@ -1,17 +1,12 @@
 /**
- * tabBar 通信事件：
+ * tabBar 高亮同步事件（唯一通信事件）：
  *
- * - TAB_NAVIGATE_EVENT：tabBar 组件点击时广播「目标路径 + 发起页索引」，
- *   由发起页（当前页）在自己的页面上下文内执行路由跳转——
- *   路由 API 只在页面上下文可靠（组件上下文中 switchTab 已实测 fail），
- *   且按发起页索引过滤，避免多个已加载的 tab 页监听器重复触发跳转。
+ * - TAB_SYNC_EVENT：tab 页每次 onShow 广播，已加载的 tabBar 实例收到后
+ *   重算自身高亮（读页面栈顶）。等价于官方自定义 tabBar 模式中页面
+ *   onShow 里 getTabBar().setData({ selected }) 的 Taro React 写法——
+ *   Taro React 函数组件拿不到 getTabBar 实例引用，用事件总线等价替代。
  *
- * - TAB_SYNC_EVENT：tab 页每次 onShow 广播，tabBar 实例收到后重算自身高亮。
- *   必要性：tabBar 实例被框架缓存复用，切页不触发函数组件 re-render，
- *   render 期一次性计算的 selected 会冻结在旧值——一旦实例创建时
- *   页面栈尚未更新（竞态），高亮永久错位，且 idx===selected 早退
- *   与「目标页已是当前页的 switchTab 无变化」叠加成彻底死锁。
- *   onShow 同步在用户可点击之前必然发生，从机制上保证高亮正确。
+ * 点击导航不走事件：组件点击处理器直接调 switchTabSafe（见 router.ts），
+ * 不依赖任何状态判断，从结构上排除死锁。
  */
-export const TAB_NAVIGATE_EVENT = 'ctab:navigate';
 export const TAB_SYNC_EVENT = 'ctab:sync';
