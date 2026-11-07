@@ -1,7 +1,8 @@
 import { View, Image, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
+import { useEffect, useState } from 'react';
 import { TAB_ICONS } from './custom-tab-bar.icons';
-import { TAB_NAVIGATE_EVENT } from './events';
+import { TAB_NAVIGATE_EVENT, TAB_SYNC_EVENT } from './events';
 import './index.scss';
 
 interface TabItem {
@@ -30,13 +31,8 @@ const TABS: TabItem[] = [
 ];
 
 /**
- * 解析本 tabBar 实例所属的 tab 索引：组件创建时读取页面栈顶——
- * custom tabBar 组件挂在页面上下文中创建，此时栈顶即自己所在的页面。
- *
- * 这是高亮机制的唯一事实来源：实例自知归属，初始高亮即正确值，
- * 无需任何跨实例同步——历史上基于「页面 onShow 广播 + 组件监听」的同步
- * 存在必然时序竞态（onShow 先于 tabBar 组件 mount，事件无人接收，
- * 实例保持初始值导致高亮与页面错位），本方案从机制上消除该竞态。
+ * 解析本 tabBar 实例当前应高亮的 tab 索引：读页面栈顶路由。
+ * tabBar 组件挂在页面上下文中，栈顶即当前显示的页面。
  */
 function resolveSelfIndex(): number {
   try {
@@ -53,19 +49,27 @@ function resolveSelfIndex(): number {
  * 自定义 tabBar：官方 tabBar 的图标文件加载（png/jpg 各种编码形态）在本环境实测全部裂图，
  * 改为组件自绘 + base64 内联图标，从机制上消除文件加载环节。
  *
- * 高亮：实例自知归属（resolveSelfIndex），只读；点击后页面切换，
- * 由目标页的新实例呈现正确高亮——不存在「当前实例高亮被同步」的需求。
+ * 高亮（事件驱动，v2）：tab 页每次 onShow 广播 TAB_SYNC_EVENT，本实例重算
+ * resolveSelfIndex 并 setState。不能只靠 render 期一次计算——tabBar 实例被
+ * 框架缓存复用，切页不触发函数组件 re-render，一次性值会冻结在旧值：
+ * 实例创建时若页面栈尚未更新（竞态），高亮永久错位，叠加「idx===selected
+ * 早退」与「switchTab 到当前页无变化」形成死锁（点击完全无反应）。
+ * onShow 同步必然先于用户点击发生，保证 selected 始终正确。
+ *
  * 切页：广播导航事件（带发起页索引），由发起页在页面上下文内执行路由跳转
  * （组件上下文调路由 API 已实测不可靠），见 router.ts。
  */
 export default function CustomTabBar() {
-  /**
-   * 高亮恒等于实例归属（resolveSelfIndex 幂等：同一实例永远在同一个页面）。
-   * 刻意不做乐观更新——乐观值会污染发起页实例（tab 页与 tabBar 实例被框架缓存，
-   * 切回时污染值残留：高亮错位 + idx===selected 早退死锁「点了没反应」）。
-   * 原生 tabBar 的行为本就是「切页完成后高亮跟随」，点击瞬间用 :active 按压反馈补足。
-   */
-  const selected = resolveSelfIndex();
+  const [selected, setSelected] = useState(() => resolveSelfIndex());
+
+  useEffect(() => {
+    // tab 页 onShow 广播：重算高亮，纠正冻结的旧值（含实例创建竞态导致的错位）
+    const sync = () => setSelected(resolveSelfIndex());
+    Taro.eventCenter.on(TAB_SYNC_EVENT, sync);
+    return () => {
+      Taro.eventCenter.off(TAB_SYNC_EVENT, sync);
+    };
+  }, []);
 
   const handleTap = (idx: number, pagePath: string) => {
     if (idx === selected) return;

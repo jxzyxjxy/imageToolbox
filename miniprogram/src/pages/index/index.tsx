@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import UserProfile from '@/components/UserProfile';
 import { maybeShowInterstitialAd } from '@/utils/ad';
 import { SHOW_LOGIN_ENTRY } from '@/config';
-import { TAB_NAVIGATE_EVENT } from '@/custom-tab-bar/events';
+import { TAB_NAVIGATE_EVENT, TAB_SYNC_EVENT } from '@/custom-tab-bar/events';
 import { switchTabFromPage } from '@/custom-tab-bar/router';
 import './index.scss';
 
@@ -118,6 +118,8 @@ export default function Index() {
 
   // 进场插屏广告（已配置广告位 ID 时生效；每次冷启动最多一次）
   useDidShow(() => {
+    // 广播 tabBar 高亮同步（见 custom-tab-bar/events.ts 的 TAB_SYNC_EVENT 说明）
+    Taro.eventCenter.trigger(TAB_SYNC_EVENT);
     setTimeout(() => maybeShowInterstitialAd(), 800);
   });
 

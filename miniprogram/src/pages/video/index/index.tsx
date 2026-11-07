@@ -1,7 +1,7 @@
 import { View, Text } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
 import { useEffect } from 'react';
-import { TAB_NAVIGATE_EVENT } from '@/custom-tab-bar/events';
+import { TAB_NAVIGATE_EVENT, TAB_SYNC_EVENT } from '@/custom-tab-bar/events';
 import { switchTabFromPage } from '@/custom-tab-bar/router';
 import './index.scss';
 
@@ -81,6 +81,11 @@ export default function VideoIndex() {
       Taro.eventCenter.off(TAB_NAVIGATE_EVENT, nav);
     };
   }, []);
+
+  // 广播 tabBar 高亮同步（见 custom-tab-bar/events.ts 的 TAB_SYNC_EVENT 说明）
+  useDidShow(() => {
+    Taro.eventCenter.trigger(TAB_SYNC_EVENT);
+  });
 
   const handleTap = (tool: VideoToolItem) => {
     if (!tool.ready || !tool.path) {
