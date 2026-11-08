@@ -154,15 +154,33 @@
   }
 }
 
-/* 结果提示（不展示具体数值：真机各途径大小都可能返回假值） */
-.result__hint {
-  display: block;
+/* 结果对比 */
+.result {
   background: #f8fafc;
   border-radius: 24rpx;
   padding: 24rpx 28rpx;
-  font-size: 26rpx;
-  color: #64748b;
-  line-height: 1.6;
+
+  &__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10rpx 0;
+  }
+
+  &__k {
+    font-size: 26rpx;
+    color: #64748b;
+  }
+
+  &__v {
+    font-size: 28rpx;
+    font-weight: 700;
+    color: #1e293b;
+
+    &--hl {
+      color: #10b981;
+    }
+  }
 }
 
 /* 次级按钮 */
