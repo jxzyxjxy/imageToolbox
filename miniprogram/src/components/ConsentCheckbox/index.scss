@@ -22,6 +22,13 @@
     line-height: 1.5;
   }
 
+  /* 已同意态：常驻纯文本入口的前导文案（字号小于勾选态，弱化打扰） */
+  &__plain {
+    font-size: 22rpx;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+
   &__link {
     color: #6366f1;
     font-weight: 500;

@@ -64,6 +64,13 @@
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
 
+## 小程序声明/授权合规（miniprogram/src/utils/consent.ts + components/ConsentCheckbox）
+
+- 声明引擎 `createConsentFlow`（存储键+文案参数化）：`hasAgreed` / `request`（弹窗：同意→持久记忆，拒绝→不记忆下次重弹；技术故障只本次放行绝不持久化）/ `preview`（单按钮纯预览全文）。全局弹窗锁防连点吞弹窗。
+- `ConsentCheckbox` 双态（置于主按钮上方）：**未同意**=勾选条，点击弹声明，同意后主按钮恢复；**已同意**=常驻纯文本入口「使用即代表同意《肖像权与个人信息授权声明》」（无勾选框），点击纯预览全文。审核要求授权声明始终可见可查，不能同意一次后消失（2026-11 证件照审核驳回整改项）。
+- 图片 AI 工具页（证件照/抠图/修复/找相似/去水印/智能擦除）共用 portrait 声明；视频解析页用独立 `video` 声明（`.legal` 常驻入口 + 进页自动弹）。
+- AI 生成内容页必须带「AI生成」标识（如证件照 banner 的 badge）。
+
 ## 云函数视频解析（miniprogram/cloudfunctions/yt_video_parse/index.js）
 
 - `FN_VERSION` 版本戳随返回下发（`exports.main` 包装 `ver` 字段，尾部带 `[timing]` 总耗时日志），真机 toast 尾巴可见，用于排查「线上是否为最新部署」。

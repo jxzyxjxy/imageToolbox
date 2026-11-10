@@ -167,6 +167,9 @@ const portraitFlow = createConsentFlow(
 /** 兼容既有页面引用（图片 AI 工具页 authed 状态初始化） */
 export const hasAgreed = (): boolean => portraitFlow.hasAgreed();
 
+/** 纯预览肖像授权声明全文（已同意用户从常驻入口查看，不询问、不写记忆） */
+export const previewPortraitConsent = (): void => portraitFlow.preview();
+
 export function requestPortraitConsent(
   onGranted: () => void,
   onRejected: () => void,
