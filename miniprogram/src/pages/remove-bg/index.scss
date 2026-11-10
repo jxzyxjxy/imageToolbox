@@ -170,6 +170,7 @@
   }
 }
 
+/* 底部占位：常驻声明行 + 按钮 + 留白 + 安全区 */
 .footer-placeholder {
-  height: 180rpx;
+  height: calc(240rpx + env(safe-area-inset-bottom));
 }

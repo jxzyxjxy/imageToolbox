@@ -290,6 +290,7 @@
   }
 }
 
+/* 底部占位：常驻声明行 + 按钮 + 留白 + 安全区，比固定栏实际高度多留余量，避免遮挡内容 */
 .footer-placeholder {
-  height: 180rpx;
+  height: calc(240rpx + env(safe-area-inset-bottom));
 }
