@@ -286,11 +286,11 @@ export default function Similar() {
           className="hint-input"
           value={hint}
           maxlength={200}
-          placeholder="告诉 AI 你想要的方向，如：改成站在樱花树下、换粉色背景、加点光斑氛围…"
+          placeholder="只改你想改的，如：背景换成淡蓝色、增加柔和光感。图中的文字和内容会尽量保持不变"
           placeholderClass="hint-input__placeholder"
           onInput={(e) => setHint(e.detail.value)}
         />
-        <Text className="card__tip">留空则按相似度自动生成；填写后 AI 会参考你的描述调整风格与场景</Text>
+        <Text className="card__tip">填写后 AI 进入编辑模式：尽量保持原图内容与文字不变，只按你的要求调整；AI 对密集文字的还原可能偶有偏差，请留意检查结果</Text>
       </View>
 
       {/* 张数 */}

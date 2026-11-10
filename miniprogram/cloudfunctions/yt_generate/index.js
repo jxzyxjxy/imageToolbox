@@ -53,8 +53,35 @@ function normalizeSize(w0, h0) {
   return { w, h };
 }
 
-/** 根据相似度生成图生图引导词（与 H5 一致） */
-function buildPrompt(similarity) {
+/**
+ * 根据相似度与用户指引生成引导词。
+ * - 无指引：相似创作模式（图生图自由变体，工具原生语义）。
+ * - 有指引：局部编辑模式（对齐去水印/消除的编辑式措辞）——
+ *   明确锁定原图全部文字/符号/布局逐字不变、禁止新增元素，
+ *   指引只作用于用户要求的方面。否则「重新演绎」措辞会让模型
+ *   重绘整图，满屏文字直接乱码（实测教训）。
+ */
+function buildPrompt(similarity, userHint) {
+  const hint = typeof userHint === 'string' ? userHint.trim().slice(0, 500) : '';
+  if (hint) {
+    const strength =
+      similarity >= 80
+        ? '只做上述要求的最小必要改动；除上述要求涉及的方面外，其余一切与原图保持完全一致。'
+        : similarity >= 50
+          ? '以上述要求为主进行调整；除上述要求涉及的方面及相关氛围外，其余内容与原图保持一致。'
+          : '以上述要求为方向进行演绎；但原图中所有文字与符号仍必须逐字原样保留。';
+    return (
+      '对提供的原图进行局部编辑：在原图基础上直接修改指定方面，不要重新创作、不要重新绘制整图。\n' +
+      '编辑规则（必须严格遵守）：\n' +
+      '1. 原图中所有文字、字母、数字、音标、符号、图形、人物、物体、卡片、表格及排版布局，必须逐字逐个原样保留，不得改写、增删、替换、变形或重绘；\n' +
+      '2. 禁止添加原图中不存在的新元素、装饰、图案、图标、贴纸、边框或符号；\n' +
+      '3. 保持原图的画面尺寸与整体构图不变。\n' +
+      '仅按以下要求调整（除此之外一律不改）：' +
+      hint +
+      '\n' +
+      strength
+    );
+  }
   const base = '参考用户提供的图片进行图生图创作，输出高质量、细节丰富的图片。';
   if (similarity >= 80) {
     return (
@@ -134,7 +161,7 @@ exports.main = async (event) => {
       }
       const similarity = Math.min(100, Math.max(10, Math.round(Number(event.similarity) || 70)));
       count = Math.min(4, Math.max(1, Math.round(Number(event.count) || 1)));
-      prompt = buildPrompt(similarity);
+      prompt = buildPrompt(similarity, event.prompt);
       if (transparent) {
         prompt +=
           '重要：将主体完整、居中地呈现在纯白色（#FFFFFF）背景上，' +
