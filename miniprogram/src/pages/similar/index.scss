@@ -285,3 +285,34 @@
 .footer-placeholder {
   height: calc(240rpx + env(safe-area-inset-bottom));
 }
+
+/* 创意指引输入框 */
+.hint-input {
+  display: block;
+  width: 100%;
+  min-height: 150rpx;
+  padding: 20rpx 24rpx;
+  box-sizing: border-box;
+  font-size: 28rpx;
+  color: #1e293b;
+  background: #f1f5f9;
+  border-radius: 16rpx;
+  border: 2rpx solid transparent;
+  transition: border-color 0.2s;
+
+  &:focus,
+  &--focus {
+    border-color: #6366f1;
+  }
+
+  &__placeholder {
+    color: #94a3b8;
+    font-size: 26rpx;
+  }
+}
+
+.card__value--optional {
+  font-weight: 400;
+  font-size: 24rpx;
+  color: #94a3b8;
+}

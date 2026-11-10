@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Image, Input, Slider, Button } from '@tarojs/components';
+import { View, Text, Image, Input, Textarea, Slider, Button } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { generateSimilar } from '../../api/client';
 import { uploadImage, getTempUrls, downloadTemp } from '../../api/cloud';
@@ -38,6 +38,8 @@ export default function Similar() {
   const [height, setHeight] = useState('');
   const [similarity, setSimilarity] = useState(70);
   const [count, setCount] = useState(1);
+  // 用户创意指引（可选）：指引 AI 生成方向，留空按相似度自动生成
+  const [hint, setHint] = useState('');
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<ResultItem[]>([]);
@@ -105,7 +107,7 @@ export default function Similar() {
       setUploading(true);
       const inputFileID = await uploadImage(image.filePath);
       setUploading(false);
-      // 2) 云函数生图
+      // 2) 云函数生图（prompt 为用户创意指引，留空不传）
       const data = await generateSimilar(inputFileID, {
         width: w,
         height: h,
@@ -113,6 +115,7 @@ export default function Similar() {
         count,
         modelKey,
         transparent: bgMode === 'transparent',
+        prompt: hint.trim() || undefined,
       });
       if (!data.results?.length) throw new Error('未返回图片');
       // 3) fileID 换临时链接用于展示
@@ -271,6 +274,23 @@ export default function Similar() {
           onChange={(e) => setSimilarity(e.detail.value)}
         />
         <Text className="card__tip">越高越接近原图，越低越有创意</Text>
+      </View>
+
+      {/* 创意指引（可选） */}
+      <View className="card">
+        <View className="card__label-row">
+          <Text className="card__label">创意指引</Text>
+          <Text className="card__value card__value--optional">可选</Text>
+        </View>
+        <Textarea
+          className="hint-input"
+          value={hint}
+          maxlength={200}
+          placeholder="告诉 AI 你想要的方向，如：改成站在樱花树下、换粉色背景、加点光斑氛围…"
+          placeholderClass="hint-input__placeholder"
+          onInput={(e) => setHint(e.detail.value)}
+        />
+        <Text className="card__tip">留空则按相似度自动生成；填写后 AI 会参考你的描述调整风格与场景</Text>
       </View>
 
       {/* 张数 */}

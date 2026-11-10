@@ -37,6 +37,8 @@ export interface SimilarOptions {
   count?: number;
   modelKey?: string;
   transparent?: boolean;
+  /** 用户创意指引（可选），AI 优先按此描述调整生成方向 */
+  prompt?: string;
 }
 
 export interface GenerateResultItem {
