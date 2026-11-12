@@ -125,16 +125,16 @@ export default function ProfilePage() {
     });
   };
 
-  /** 注销：清空本地登录态，恢复游客态 */
+  /** 退出登录：清空本地登录态，恢复游客态 */
   const handleLogout = () => {
     if (!profile) {
       Taro.showToast({ title: '当前未登录', icon: 'none' });
       return;
     }
     Taro.showModal({
-      title: '注销用户',
-      content: '注销后将清除头像与昵称，恢复未登录状态，确定注销吗？',
-      confirmText: '注销',
+      title: '退出登录',
+      content: '退出后将清除头像与昵称，恢复未登录状态，确定退出吗？',
+      confirmText: '退出',
       confirmColor: '#ef4444',
       success: (res) => {
         if (!res.confirm) return;
@@ -150,7 +150,7 @@ export default function ProfilePage() {
         }
         setProfile(null);
         setEditing(false);
-        Taro.showToast({ title: '已注销', icon: 'success' });
+        Taro.showToast({ title: '已退出登录', icon: 'success' });
       },
     });
   };
@@ -168,31 +168,25 @@ export default function ProfilePage() {
 
   return (
     <View className='profile'>
-      {/* 头部：紫色渐变 Hero + 头像昵称 */}
-      <View className='profile__hero'>
+      {/* 头部：紧凑一行——头像 + 昵称 + 箭头，点击拉起浮层 */}
+      <View className='profile__hero' onClick={openEditor}>
         <View className='profile__hero-glow profile__hero-glow--tr' />
         <View className='profile__hero-glow profile__hero-glow--bl' />
 
-        <View className='profile__avatar-wrap' onClick={openEditor}>
-          <Image
-            className='profile__avatar'
-            src={profile?.avatar || DEFAULT_AVATAR}
-            mode='aspectFill'
-          />
-          {!profile && <Text className='profile__avatar-tip'>点击登录</Text>}
+        <Image
+          className='profile__avatar'
+          src={profile?.avatar || DEFAULT_AVATAR}
+          mode='aspectFill'
+        />
+        <View className='profile__name-wrap'>
+          <Text className='profile__nickname'>
+            {profile ? profile.nickname : '未登录'}
+          </Text>
+          <Text className='profile__name-sub'>
+            {profile ? '点击修改资料' : '点击登录，保存头像与昵称'}
+          </Text>
         </View>
-
-        {profile ? (
-          <View className='profile__name-wrap' onClick={openEditor}>
-            <Text className='profile__nickname'>{profile.nickname}</Text>
-            <Text className='profile__name-sub'>点击头像可修改资料</Text>
-          </View>
-        ) : (
-          <View className='profile__name-wrap' onClick={openEditor}>
-            <Text className='profile__nickname profile__nickname--empty'>未登录</Text>
-            <Text className='profile__name-sub'>登录后可保存头像与昵称</Text>
-          </View>
-        )}
+        <Text className='profile__hero-arrow'>›</Text>
       </View>
 
       {/* 功能菜单 */}
@@ -232,9 +226,7 @@ export default function ProfilePage() {
           <View className='profile__row-icon profile__row-icon--logout'>
             <Text className='profile__row-glyph'>⏻</Text>
           </View>
-          <Text className='profile__row-text profile__row-text--danger'>
-            {profile ? '注销用户' : '注销（当前未登录）'}
-          </Text>
+          <Text className='profile__row-text profile__row-text--danger'>退出登录</Text>
           <Text className='profile__row-arrow'>›</Text>
         </View>
       </View>
