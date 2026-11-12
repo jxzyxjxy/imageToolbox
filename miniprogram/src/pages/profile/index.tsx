@@ -216,6 +216,17 @@ export default function ProfilePage() {
           <Text className='profile__row-arrow'>›</Text>
         </View>
 
+        <View
+          className='profile__row'
+          onClick={() => Taro.navigateTo({ url: '/pages/faq/index' })}
+        >
+          <View className='profile__row-icon profile__row-icon--faq'>
+            <Text className='profile__row-glyph'>?</Text>
+          </View>
+          <Text className='profile__row-text'>常见问题</Text>
+          <Text className='profile__row-arrow'>›</Text>
+        </View>
+
         <View className='profile__row' onClick={handleAbout}>
           <View className='profile__row-icon profile__row-icon--about'>
             <Text className='profile__row-glyph'>i</Text>

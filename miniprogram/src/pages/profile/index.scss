@@ -12,7 +12,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: calc(env(safe-area-inset-top) + 120rpx) 36rpx 40rpx;
+  padding: calc(env(safe-area-inset-top) + 120rpx) 36rpx 60rpx;
   border-radius: 0 0 40rpx 40rpx;
   background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
 }
@@ -50,8 +50,8 @@
 
 .profile__avatar {
   flex-shrink: 0;
-  width: 112rpx;
-  height: 112rpx;
+  width: 124rpx;
+  height: 124rpx;
   border-radius: 50%;
   border: 4rpx solid rgba(255, 255, 255, 0.45);
   box-shadow: 0 8rpx 24rpx rgba(76, 29, 149, 0.3);
@@ -291,6 +291,10 @@
 
   &--clean {
     background: linear-gradient(135deg, #10b981, #22c55e);
+  }
+
+  &--faq {
+    background: linear-gradient(135deg, #0ea5e9, #6366f1);
   }
 
   &--about {

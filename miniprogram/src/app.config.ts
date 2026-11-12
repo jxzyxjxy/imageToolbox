@@ -17,6 +17,7 @@ export default defineAppConfig({
     'pages/video/parse/index',
     'pages/video/result/index',
     'pages/profile/index',
+    'pages/faq/index',
   ],
   tabBar: {
     // 自定义 tabBar：实测该环境下官方 tabBar 图标文件（png/jpg 各种编码形态）全部裂图——

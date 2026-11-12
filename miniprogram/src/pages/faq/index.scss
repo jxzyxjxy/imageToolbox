@@ -1,0 +1,68 @@
+.faq {
+  min-height: 100vh;
+  padding: 24rpx 32rpx 60rpx;
+  box-sizing: border-box;
+  background: #f5f6fa;
+}
+
+.faq__card {
+  background: #ffffff;
+  border-radius: 32rpx;
+  padding: 8rpx 32rpx;
+  box-shadow: 0 8rpx 32rpx rgba(30, 41, 59, 0.06);
+}
+
+.faq__item {
+  border-bottom: 1rpx solid #f1f5f9;
+
+  &--last {
+    border-bottom: none;
+  }
+}
+
+.faq__q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 0;
+}
+
+.faq__q-text {
+  flex: 1;
+  margin-right: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.faq__q-arrow {
+  flex-shrink: 0;
+  font-size: 32rpx;
+  line-height: 1;
+  color: #94a3b8;
+  transition: transform 0.25s ease;
+  transform: rotate(0deg);
+
+  &--open {
+    transform: rotate(180deg);
+  }
+}
+
+.faq__a {
+  padding: 0 0 30rpx;
+}
+
+.faq__a-text {
+  display: block;
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+.faq__tip {
+  display: block;
+  margin-top: 32rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
