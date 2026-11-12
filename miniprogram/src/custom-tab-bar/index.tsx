@@ -26,6 +26,12 @@ const TABS: TabItem[] = [
     icon: TAB_ICONS['video-off'],
     iconActive: TAB_ICONS['video-on'],
   },
+  {
+    pagePath: '/pages/profile/index',
+    text: '我的',
+    icon: TAB_ICONS['me-off'],
+    iconActive: TAB_ICONS['me-on'],
+  },
 ];
 
 /**

@@ -16,6 +16,7 @@ export default defineAppConfig({
     'pages/video/compress/index',
     'pages/video/parse/index',
     'pages/video/result/index',
+    'pages/profile/index',
   ],
   tabBar: {
     // 自定义 tabBar：实测该环境下官方 tabBar 图标文件（png/jpg 各种编码形态）全部裂图——
@@ -39,6 +40,13 @@ export default defineAppConfig({
         text: '视频工具',
         iconPath: 'assets/tabbar/video-off.jpg',
         selectedIconPath: 'assets/tabbar/video-on.jpg',
+      },
+      {
+        pagePath: 'pages/profile/index',
+        text: '我的',
+        // iconPath 仅要求文件存在（custom: true 后真实渲染走 base64），复用现有文件
+        iconPath: 'assets/tabbar/pic-off.jpg',
+        selectedIconPath: 'assets/tabbar/pic-on.jpg',
       },
     ],
   },
