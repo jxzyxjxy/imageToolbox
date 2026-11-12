@@ -80,7 +80,11 @@ export default function ProfilePage() {
 
   const handleSave = () => {
     if (!draft.avatar) {
-      Taro.showToast({ title: '请先选择头像', icon: 'none' });
+      Taro.showToast({
+        title: '请先点上方头像选微信头像；若无反应请在小程序设置中同意隐私协议',
+        icon: 'none',
+        duration: 3000,
+      });
       return;
     }
     const nickname = draft.nickname.trim();
@@ -168,10 +172,11 @@ export default function ProfilePage() {
 
   return (
     <View className='profile'>
-      {/* 头部：紧凑一行——头像 + 昵称 + 箭头，点击拉起浮层 */}
+      {/* 头部：沉浸式——标题居中，头像 + 昵称横排，点击拉起浮层 */}
       <View className='profile__hero' onClick={openEditor}>
         <View className='profile__hero-glow profile__hero-glow--tr' />
         <View className='profile__hero-glow profile__hero-glow--bl' />
+        <Text className='profile__hero-title'>我的</Text>
 
         <Image
           className='profile__avatar'

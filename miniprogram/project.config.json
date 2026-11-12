@@ -29,6 +29,7 @@
   },
   "compileType": "miniprogram",
   "libVersion": "latest",
+  "__usePrivacyCheck__": true,
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [],

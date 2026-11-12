@@ -1,20 +1,31 @@
 .profile {
   min-height: 100vh;
-  padding: 24rpx 32rpx calc(220rpx + env(safe-area-inset-bottom));
+  padding: 0 0 calc(220rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: #f5f6fa;
 }
 
-/* ---------- Hero 头部（紧凑一行） ---------- */
+/* ---------- Hero 头部（沉浸式，顶进导航区） ---------- */
 .profile__hero {
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 40rpx 36rpx;
+  padding: calc(env(safe-area-inset-top) + 120rpx) 36rpx 40rpx;
   border-radius: 0 0 40rpx 40rpx;
   background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+}
+
+.profile__hero-title {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 24rpx);
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #ffffff;
 }
 
 .profile__hero-glow {
@@ -95,11 +106,19 @@
 
 /* ---------- 通用卡片 ---------- */
 .profile__card {
-  margin-top: 28rpx;
+  margin: 24rpx 32rpx 0;
   background: #ffffff;
   border-radius: 48rpx;
   padding: 12rpx 32rpx;
   box-shadow: 0 8rpx 32rpx rgba(30, 41, 59, 0.06);
+}
+
+.profile__version {
+  display: block;
+  margin-top: 32rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #94a3b8;
 }
 
 /* ---------- 底部浮层：资料编辑 ---------- */
@@ -304,14 +323,6 @@
   font-size: 34rpx;
   color: #cbd5e1;
   line-height: 1;
-}
-
-.profile__version {
-  display: block;
-  margin-top: 40rpx;
-  text-align: center;
-  font-size: 22rpx;
-  color: #94a3b8;
 }
 
 @keyframes profile-sheet-up {
