@@ -102,15 +102,43 @@
   box-shadow: 0 8rpx 32rpx rgba(30, 41, 59, 0.06);
 }
 
-/* ---------- 资料编辑 ---------- */
-.profile__edit {
-  padding: 36rpx 32rpx 32rpx;
+/* ---------- 底部浮层：资料编辑 ---------- */
+.profile__sheet-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.55);
+  animation: profile-mask-in 0.2s ease-out;
+}
+
+.profile__sheet {
+  background: #ffffff;
+  border-radius: 40rpx 40rpx 0 0;
+  padding: 20rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+  box-shadow: 0 -12rpx 40rpx rgba(15, 23, 42, 0.18);
+  animation: profile-sheet-up 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.profile__sheet-grabber {
+  width: 72rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: #e2e8f0;
+  margin: 0 auto;
 }
 
 .profile__edit-title {
   display: block;
+  margin-top: 24rpx;
   font-size: 32rpx;
   font-weight: 600;
+  text-align: center;
   color: #1e293b;
 }
 
@@ -283,4 +311,24 @@
   text-align: center;
   font-size: 22rpx;
   color: #94a3b8;
+}
+
+@keyframes profile-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes profile-mask-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }

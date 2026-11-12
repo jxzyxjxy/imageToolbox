@@ -195,51 +195,6 @@ export default function ProfilePage() {
         )}
       </View>
 
-      {/* 资料编辑卡（登录 / 修改） */}
-      {editing && (
-        <View className='profile__card profile__edit'>
-          <Text className='profile__edit-title'>
-            {profile ? '修改资料' : '登录'}
-          </Text>
-
-          <View className='profile__edit-row'>
-            <Button
-              className='profile__avatar-btn'
-              openType='chooseAvatar'
-              onChooseAvatar={handleChooseAvatar}
-            >
-              <Image
-                className='profile__avatar profile__avatar--edit'
-                src={draft.avatar || DEFAULT_AVATAR}
-                mode='aspectFill'
-              />
-              <Text className='profile__avatar-btn-tip'>选头像</Text>
-            </Button>
-          </View>
-
-          <View className='profile__edit-row profile__edit-row--input'>
-            <Input
-              className='profile__nickname-input'
-              type='nickname'
-              value={draft.nickname}
-              placeholder='填写昵称（可用微信昵称）'
-              placeholderClass='profile__nickname-input-ph'
-              onInput={handleNicknameInput}
-              maxlength={16}
-            />
-          </View>
-
-          <View className='profile__edit-actions'>
-            <Button className='profile__btn profile__btn--ghost' onClick={() => setEditing(false)}>
-              取消
-            </Button>
-            <Button className='profile__btn profile__btn--primary' onClick={handleSave}>
-              保存
-            </Button>
-          </View>
-        </View>
-      )}
-
       {/* 功能菜单 */}
       <View className='profile__card'>
         <Button
@@ -285,6 +240,58 @@ export default function ProfilePage() {
       </View>
 
       <Text className='profile__version'>青芽影图 v{APP_VERSION}</Text>
+
+      {/* 底部浮层：资料编辑（登录 / 修改） */}
+      {editing && (
+        <View className='profile__sheet-mask' catchMove onClick={() => setEditing(false)}>
+          <View
+            className='profile__sheet'
+            catchMove
+            onClick={(e) => e.stopPropagation()}
+          >
+            <View className='profile__sheet-grabber' />
+            <Text className='profile__edit-title'>
+              {profile ? '修改资料' : '登录'}
+            </Text>
+
+            <View className='profile__edit-row'>
+              <Button
+                className='profile__avatar-btn'
+                openType='chooseAvatar'
+                onChooseAvatar={handleChooseAvatar}
+              >
+                <Image
+                  className='profile__avatar profile__avatar--edit'
+                  src={draft.avatar || DEFAULT_AVATAR}
+                  mode='aspectFill'
+                />
+                <Text className='profile__avatar-btn-tip'>选头像</Text>
+              </Button>
+            </View>
+
+            <View className='profile__edit-row profile__edit-row--input'>
+              <Input
+                className='profile__nickname-input'
+                type='nickname'
+                value={draft.nickname}
+                placeholder='填写昵称（可用微信昵称）'
+                placeholderClass='profile__nickname-input-ph'
+                onInput={handleNicknameInput}
+                maxlength={16}
+              />
+            </View>
+
+            <View className='profile__edit-actions'>
+              <Button className='profile__btn profile__btn--ghost' onClick={() => setEditing(false)}>
+                取消
+              </Button>
+              <Button className='profile__btn profile__btn--primary' onClick={handleSave}>
+                保存
+              </Button>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
